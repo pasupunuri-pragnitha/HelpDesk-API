@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -8,6 +8,8 @@ from app.db.base import Base
 from app.models.enums import TicketPriority, TicketStatus
 
 if TYPE_CHECKING:
+    from app.models.comment import TicketComment
+    from app.models.history import TicketStatusHistory
     from app.models.user import User
 
 
@@ -21,6 +23,7 @@ class Ticket(Base):
         sa.Enum(TicketStatus, name="ticket_status", values_callable=lambda obj: [e.value for e in obj]),
         default=TicketStatus.OPEN,
         nullable=False,
+        index=True,
     )
     priority: Mapped[TicketPriority] = mapped_column(
         sa.Enum(TicketPriority, name="ticket_priority", values_callable=lambda obj: [e.value for e in obj]),
@@ -34,6 +37,11 @@ class Ticket(Base):
     assignee_id: Mapped[Optional[int]] = mapped_column(
         sa.ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    due_at: Mapped[Optional[datetime]] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
@@ -57,4 +65,16 @@ class Ticket(Base):
         "User",
         foreign_keys=[assignee_id],
         back_populates="assigned_tickets",
+    )
+    comments: Mapped[List["TicketComment"]] = relationship(
+        "TicketComment",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketComment.created_at, TicketComment.id",
+    )
+    status_history: Mapped[List["TicketStatusHistory"]] = relationship(
+        "TicketStatusHistory",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        order_by="TicketStatusHistory.created_at, TicketStatusHistory.id",
     )
