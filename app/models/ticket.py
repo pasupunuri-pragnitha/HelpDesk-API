@@ -1,0 +1,60 @@
+from datetime import datetime
+from typing import TYPE_CHECKING, Optional
+import sqlalchemy as sa
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
+
+from app.db.base import Base
+from app.models.enums import TicketPriority, TicketStatus
+
+if TYPE_CHECKING:
+    from app.models.user import User
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    description: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[TicketStatus] = mapped_column(
+        sa.Enum(TicketStatus, name="ticket_status", values_callable=lambda obj: [e.value for e in obj]),
+        default=TicketStatus.OPEN,
+        nullable=False,
+    )
+    priority: Mapped[TicketPriority] = mapped_column(
+        sa.Enum(TicketPriority, name="ticket_priority", values_callable=lambda obj: [e.value for e in obj]),
+        default=TicketPriority.MEDIUM,
+        nullable=False,
+    )
+    requester_id: Mapped[int] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assignee_id: Mapped[Optional[int]] = mapped_column(
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    requester: Mapped["User"] = relationship(
+        "User",
+        foreign_keys=[requester_id],
+        back_populates="requested_tickets",
+    )
+    assignee: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[assignee_id],
+        back_populates="assigned_tickets",
+    )
