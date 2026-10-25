@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models.enums import TicketPriority, TicketStatus, UserRole
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
 from app.models.history import TicketStatusHistory
 from app.models.ticket import Ticket
 from app.models.user import User
@@ -19,11 +19,16 @@ def test_reports_forbidden_for_requester(
         "/api/v1/reports/resolution-time",
         "/api/v1/reports/agent-ranking",
         "/api/v1/reports/daily-volume",
+        "/api/v1/reports/sla-breach-rate",
+        "/api/v1/reports/resolution-time-by-category",
+        "/api/v1/reports/agent-workload",
+        "/api/v1/reports/tickets-by-category",
     ]
     for url in endpoints:
         res = client.get(url, headers=requester_auth_headers)
         assert res.status_code == 403
         assert res.json()["error"]["message"] == "You do not have permission to access this resource"
+
 
 
 def test_daily_volume_validation_errors(
@@ -359,3 +364,403 @@ def test_report_daily_volume(
     # Verify 100 days ago is NOT present
     old_date_str = (now - timedelta(days=100)).strftime("%Y-%m-%d")
     assert old_date_str not in counts
+
+
+def test_reports_unauthenticated_returns_401(client: TestClient):
+    """Test that all 9 report endpoints return 401 Unauthorized without auth headers."""
+    endpoints = [
+        "/api/v1/reports/tickets-by-status",
+        "/api/v1/reports/overdue",
+        "/api/v1/reports/resolution-time",
+        "/api/v1/reports/agent-ranking",
+        "/api/v1/reports/daily-volume",
+        "/api/v1/reports/sla-breach-rate",
+        "/api/v1/reports/resolution-time-by-category",
+        "/api/v1/reports/agent-workload",
+        "/api/v1/reports/tickets-by-category",
+    ]
+    for url in endpoints:
+        res = client.get(url)
+        assert res.status_code == 401
+        assert "error" in res.json()
+
+
+def test_new_reports_empty_data(
+    client: TestClient,
+    agent_auth_headers: dict[str, str],
+):
+    """Test that new report endpoints succeed and return empty lists or zeroed workloads when no tickets exist."""
+    res_sla = client.get("/api/v1/reports/sla-breach-rate", headers=agent_auth_headers)
+    assert res_sla.status_code == 200
+    assert isinstance(res_sla.json(), list)
+
+    res_res = client.get("/api/v1/reports/resolution-time-by-category", headers=agent_auth_headers)
+    assert res_res.status_code == 200
+    assert isinstance(res_res.json(), list)
+
+    res_cat = client.get("/api/v1/reports/tickets-by-category", headers=agent_auth_headers)
+    assert res_cat.status_code == 200
+    assert isinstance(res_cat.json(), list)
+
+    res_cat_breakdown = client.get("/api/v1/reports/tickets-by-category?breakdown_by_status=true", headers=agent_auth_headers)
+    assert res_cat_breakdown.status_code == 200
+    assert isinstance(res_cat_breakdown.json(), list)
+
+
+def test_report_sla_breach_rate(
+    client: TestClient,
+    agent_auth_headers: dict[str, str],
+    agent_user: User,
+    db_session: Session,
+    requester_user: User,
+):
+    """
+    Test SLA breach rate report:
+    - Urgent: 1 met, 1 breached -> 50.0% breach rate
+    - High: 1 breached (unresolved past due) -> 100.0% breach rate
+    - Low: 1 met (unresolved on track) -> 0.0% breach rate
+    """
+    now = datetime.now(timezone.utc)
+
+    # 1. Urgent tickets
+    t1 = Ticket(
+        title="U1 Met",
+        description="D",
+        status=TicketStatus.RESOLVED,
+        priority=TicketPriority.URGENT,
+        category=TicketCategory.SOFTWARE,
+        requester_id=requester_user.id,
+        due_at=now + timedelta(hours=2),
+        created_at=now - timedelta(hours=2),
+        updated_at=now,
+    )
+    t2 = Ticket(
+        title="U2 Breached",
+        description="D",
+        status=TicketStatus.RESOLVED,
+        priority=TicketPriority.URGENT,
+        category=TicketCategory.SOFTWARE,
+        requester_id=requester_user.id,
+        due_at=now - timedelta(hours=1),
+        created_at=now - timedelta(hours=4),
+        updated_at=now,
+    )
+
+    # 2. High ticket: unresolved and past due_at
+    t3 = Ticket(
+        title="H1 Breached Unresolved",
+        description="D",
+        status=TicketStatus.OPEN,
+        priority=TicketPriority.HIGH,
+        category=TicketCategory.NETWORK,
+        requester_id=requester_user.id,
+        due_at=now - timedelta(hours=2),
+        created_at=now - timedelta(hours=5),
+        updated_at=now,
+    )
+
+    # 3. Low ticket: unresolved, on track
+    t4 = Ticket(
+        title="L1 Met Unresolved",
+        description="D",
+        status=TicketStatus.IN_PROGRESS,
+        priority=TicketPriority.LOW,
+        category=TicketCategory.ACCESS,
+        requester_id=requester_user.id,
+        due_at=now + timedelta(hours=10),
+        created_at=now - timedelta(hours=1),
+        updated_at=now,
+    )
+
+    db_session.add_all([t1, t2, t3, t4])
+    db_session.commit()
+
+    # Resolution history:
+    # t1 resolved at (now - 1h) which is <= due_at (now + 2h) -> Met
+    h1 = TicketStatusHistory(
+        ticket_id=t1.id,
+        changed_by_id=agent_user.id,
+        from_status=TicketStatus.IN_PROGRESS,
+        to_status=TicketStatus.RESOLVED,
+        created_at=now - timedelta(hours=1),
+    )
+    # t2 resolved at now which is > due_at (now - 1h) -> Breached
+    h2 = TicketStatusHistory(
+        ticket_id=t2.id,
+        changed_by_id=agent_user.id,
+        from_status=TicketStatus.IN_PROGRESS,
+        to_status=TicketStatus.RESOLVED,
+        created_at=now,
+    )
+    db_session.add_all([h1, h2])
+    db_session.commit()
+
+    res = client.get("/api/v1/reports/sla-breach-rate", headers=agent_auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+
+    rates_by_priority = {row["priority"]: row for row in data}
+    assert "urgent" in rates_by_priority
+    assert rates_by_priority["urgent"]["total_tickets"] == 2
+    assert rates_by_priority["urgent"]["met_sla"] == 1
+    assert rates_by_priority["urgent"]["breached_sla"] == 1
+    assert rates_by_priority["urgent"]["breach_rate"] == 50.0
+
+    assert "high" in rates_by_priority
+    assert rates_by_priority["high"]["total_tickets"] == 1
+    assert rates_by_priority["high"]["met_sla"] == 0
+    assert rates_by_priority["high"]["breached_sla"] == 1
+    assert rates_by_priority["high"]["breach_rate"] == 100.0
+
+    assert "low" in rates_by_priority
+    assert rates_by_priority["low"]["total_tickets"] == 1
+    assert rates_by_priority["low"]["met_sla"] == 1
+    assert rates_by_priority["low"]["breached_sla"] == 0
+    assert rates_by_priority["low"]["breach_rate"] == 0.0
+
+
+def test_report_resolution_time_by_category(
+    client: TestClient,
+    agent_auth_headers: dict[str, str],
+    agent_user: User,
+    db_session: Session,
+    requester_user: User,
+):
+    """
+    Test resolution time by category report:
+    - Only resolved tickets are counted.
+    - Software + High: 2 tickets (durations 2h and 4h -> avg 3.0h)
+    - Hardware + Low: 1 ticket (duration 5h -> avg 5.0h)
+    - Unresolved ticket is excluded.
+    """
+    now = datetime.now(timezone.utc)
+
+    # 1. Software + High (2h)
+    t1 = Ticket(
+        title="SW H 1",
+        description="D",
+        status=TicketStatus.RESOLVED,
+        priority=TicketPriority.HIGH,
+        category=TicketCategory.SOFTWARE,
+        requester_id=requester_user.id,
+        created_at=now - timedelta(hours=6),
+        updated_at=now,
+    )
+    # 2. Software + High (4h)
+    t2 = Ticket(
+        title="SW H 2",
+        description="D",
+        status=TicketStatus.RESOLVED,
+        priority=TicketPriority.HIGH,
+        category=TicketCategory.SOFTWARE,
+        requester_id=requester_user.id,
+        created_at=now - timedelta(hours=8),
+        updated_at=now,
+    )
+    # 3. Hardware + Low (5h)
+    t3 = Ticket(
+        title="HW L 1",
+        description="D",
+        status=TicketStatus.RESOLVED,
+        priority=TicketPriority.LOW,
+        category=TicketCategory.HARDWARE,
+        requester_id=requester_user.id,
+        created_at=now - timedelta(hours=10),
+        updated_at=now,
+    )
+    # 4. Email + Urgent (Unresolved)
+    t4 = Ticket(
+        title="Email U Unresolved",
+        description="D",
+        status=TicketStatus.OPEN,
+        priority=TicketPriority.URGENT,
+        category=TicketCategory.EMAIL,
+        requester_id=requester_user.id,
+        created_at=now - timedelta(hours=2),
+        updated_at=now,
+    )
+
+    db_session.add_all([t1, t2, t3, t4])
+    db_session.commit()
+
+    # Add resolution entries
+    h1 = TicketStatusHistory(
+        ticket_id=t1.id,
+        changed_by_id=agent_user.id,
+        from_status=TicketStatus.IN_PROGRESS,
+        to_status=TicketStatus.RESOLVED,
+        created_at=now - timedelta(hours=4),  # 6h - 4h = 2h duration
+    )
+    h2 = TicketStatusHistory(
+        ticket_id=t2.id,
+        changed_by_id=agent_user.id,
+        from_status=TicketStatus.IN_PROGRESS,
+        to_status=TicketStatus.RESOLVED,
+        created_at=now - timedelta(hours=4),  # 8h - 4h = 4h duration
+    )
+    h3 = TicketStatusHistory(
+        ticket_id=t3.id,
+        changed_by_id=agent_user.id,
+        from_status=TicketStatus.IN_PROGRESS,
+        to_status=TicketStatus.RESOLVED,
+        created_at=now - timedelta(hours=5),  # 10h - 5h = 5h duration
+    )
+    db_session.add_all([h1, h2, h3])
+    db_session.commit()
+
+    res = client.get("/api/v1/reports/resolution-time-by-category", headers=agent_auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+
+    lookup = {(row["category"], row["priority"]): row for row in data}
+    assert ("software", "high") in lookup
+    assert lookup[("software", "high")]["ticket_count"] == 2
+    assert round(lookup[("software", "high")]["avg_resolution_hours"], 1) == 3.0
+
+    assert ("hardware", "low") in lookup
+    assert lookup[("hardware", "low")]["ticket_count"] == 1
+    assert round(lookup[("hardware", "low")]["avg_resolution_hours"], 1) == 5.0
+
+    assert ("email", "urgent") not in lookup
+
+
+def test_report_agent_workload(
+    client: TestClient,
+    agent_auth_headers: dict[str, str],
+    agent_user: User,
+    db_session: Session,
+    requester_user: User,
+):
+    """
+    Test agent workload report:
+    - Counts open work (open + in_progress).
+    - Counts overdue open work.
+    - Counts resolved work (resolved + closed).
+    - Includes agents with zero tickets via LEFT JOIN.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Create a second agent with 0 tickets
+    agent_zero = User(
+        email="agent_zero@example.com",
+        full_name="Agent Zero",
+        hashed_password="hash",
+        role=UserRole.AGENT,
+        is_active=True,
+    )
+    db_session.add(agent_zero)
+    db_session.commit()
+
+    # Assign tickets to agent_user:
+    # 1. Open and overdue
+    t1 = Ticket(
+        title="Open Overdue",
+        description="D",
+        status=TicketStatus.OPEN,
+        priority=TicketPriority.HIGH,
+        requester_id=requester_user.id,
+        assignee_id=agent_user.id,
+        due_at=now - timedelta(hours=2),
+        created_at=now - timedelta(hours=5),
+        updated_at=now,
+    )
+    # 2. In progress, not overdue
+    t2 = Ticket(
+        title="In Progress On Track",
+        description="D",
+        status=TicketStatus.IN_PROGRESS,
+        priority=TicketPriority.MEDIUM,
+        requester_id=requester_user.id,
+        assignee_id=agent_user.id,
+        due_at=now + timedelta(hours=5),
+        created_at=now - timedelta(hours=1),
+        updated_at=now,
+    )
+    # 3. Resolved
+    t3 = Ticket(
+        title="Resolved T3",
+        description="D",
+        status=TicketStatus.RESOLVED,
+        priority=TicketPriority.LOW,
+        requester_id=requester_user.id,
+        assignee_id=agent_user.id,
+        created_at=now - timedelta(hours=4),
+        updated_at=now,
+    )
+    # 4. Closed
+    t4 = Ticket(
+        title="Closed T4",
+        description="D",
+        status=TicketStatus.CLOSED,
+        priority=TicketPriority.LOW,
+        requester_id=requester_user.id,
+        assignee_id=agent_user.id,
+        created_at=now - timedelta(hours=6),
+        updated_at=now,
+    )
+
+    db_session.add_all([t1, t2, t3, t4])
+    db_session.commit()
+
+    res = client.get("/api/v1/reports/agent-workload", headers=agent_auth_headers)
+    assert res.status_code == 200
+    data = res.json()
+
+    workload_by_id = {row["agent_id"]: row for row in data}
+
+    # Verify agent_user
+    assert agent_user.id in workload_by_id
+    u_workload = workload_by_id[agent_user.id]
+    assert u_workload["agent_name"] == agent_user.full_name
+    assert u_workload["open_tickets"] == 2
+    assert u_workload["overdue_tickets"] == 1
+    assert u_workload["resolved_tickets"] == 2
+
+    # Verify agent_zero (has 0 tickets, included via LEFT JOIN)
+    assert agent_zero.id in workload_by_id
+    z_workload = workload_by_id[agent_zero.id]
+    assert z_workload["agent_name"] == "Agent Zero"
+    assert z_workload["open_tickets"] == 0
+    assert z_workload["overdue_tickets"] == 0
+    assert z_workload["resolved_tickets"] == 0
+
+
+def test_report_tickets_by_category(
+    client: TestClient,
+    agent_auth_headers: dict[str, str],
+    db_session: Session,
+    requester_user: User,
+):
+    """
+    Test tickets-by-category report:
+    - Without breakdown: returns total count per category (status=None).
+    - With breakdown: returns count per category and status.
+    """
+    now = datetime.now(timezone.utc)
+
+    t1 = Ticket(title="T1", description="D", status=TicketStatus.OPEN, priority=TicketPriority.LOW, category=TicketCategory.NETWORK, requester_id=requester_user.id, created_at=now, updated_at=now)
+    t2 = Ticket(title="T2", description="D", status=TicketStatus.IN_PROGRESS, priority=TicketPriority.LOW, category=TicketCategory.NETWORK, requester_id=requester_user.id, created_at=now, updated_at=now)
+    t3 = Ticket(title="T3", description="D", status=TicketStatus.RESOLVED, priority=TicketPriority.LOW, category=TicketCategory.HARDWARE, requester_id=requester_user.id, created_at=now, updated_at=now)
+
+    db_session.add_all([t1, t2, t3])
+    db_session.commit()
+
+    # 1. Without breakdown
+    res_no_breakdown = client.get("/api/v1/reports/tickets-by-category", headers=agent_auth_headers)
+    assert res_no_breakdown.status_code == 200
+    data_no_bd = res_no_breakdown.json()
+    cat_counts = {row["category"]: row for row in data_no_bd}
+    assert cat_counts["network"]["count"] == 2
+    assert cat_counts["network"]["status"] is None
+    assert cat_counts["hardware"]["count"] == 1
+    assert cat_counts["hardware"]["status"] is None
+
+    # 2. With breakdown
+    res_breakdown = client.get("/api/v1/reports/tickets-by-category?breakdown_by_status=true", headers=agent_auth_headers)
+    assert res_breakdown.status_code == 200
+    data_bd = res_breakdown.json()
+    bd_counts = {(row["category"], row["status"]): row["count"] for row in data_bd}
+    assert bd_counts.get(("network", "open")) == 1
+    assert bd_counts.get(("network", "in_progress")) == 1
+    assert bd_counts.get(("hardware", "resolved")) == 1
+

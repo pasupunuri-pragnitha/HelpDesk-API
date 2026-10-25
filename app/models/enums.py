@@ -19,3 +19,13 @@ class TicketPriority(str, enum.Enum):
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
+
+
+class TicketCategory(str, enum.Enum):
+    NETWORK = "network"
+    HARDWARE = "hardware"
+    SOFTWARE = "software"
+    ACCESS = "access"
+    EMAIL = "email"
+    OTHER = "other"
+

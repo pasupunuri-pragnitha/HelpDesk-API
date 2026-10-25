@@ -448,3 +448,152 @@ def test_assign_closed_ticket_returns_409(
     assert "error" in data
     assert data["error"]["message"] == "Cannot assign a closed ticket"
 
+
+def test_ticket_category_default_and_validation(
+    client: TestClient,
+    requester_auth_headers: dict[str, str],
+):
+    """Test category default is 'other', custom category works, and invalid category returns 422."""
+    # 1. Default category
+    res1 = client.post(
+        "/api/v1/tickets",
+        json={"title": "Default Category Ticket", "description": "Desc"},
+        headers=requester_auth_headers,
+    )
+    assert res1.status_code == 201
+    assert res1.json()["category"] == "other"
+
+    # 2. Explicit valid category
+    res2 = client.post(
+        "/api/v1/tickets",
+        json={"title": "Network Ticket", "description": "Desc", "category": "network"},
+        headers=requester_auth_headers,
+    )
+    assert res2.status_code == 201
+    assert res2.json()["category"] == "network"
+
+    # 3. Invalid category -> 422
+    res3 = client.post(
+        "/api/v1/tickets",
+        json={"title": "Invalid Category Ticket", "description": "Desc", "category": "invalid_cat"},
+        headers=requester_auth_headers,
+    )
+    assert res3.status_code == 422
+    assert "error" in res3.json()
+
+
+def test_ticket_category_filter(
+    client: TestClient,
+    requester_auth_headers: dict[str, str],
+):
+    """Test filtering tickets by category, and invalid category filter returning 422."""
+    client.post(
+        "/api/v1/tickets",
+        json={"title": "Filter HW", "description": "Desc", "category": "hardware"},
+        headers=requester_auth_headers,
+    )
+    client.post(
+        "/api/v1/tickets",
+        json={"title": "Filter SW", "description": "Desc", "category": "software"},
+        headers=requester_auth_headers,
+    )
+
+    # Valid category filter
+    res_hw = client.get("/api/v1/tickets?category=hardware", headers=requester_auth_headers)
+    assert res_hw.status_code == 200
+    hw_items = res_hw.json()["items"]
+    assert all(item["category"] == "hardware" for item in hw_items)
+    assert any(item["title"] == "Filter HW" for item in hw_items)
+    assert not any(item["title"] == "Filter SW" for item in hw_items)
+
+    # Invalid category filter -> 422
+    res_invalid = client.get("/api/v1/tickets?category=nonexistent", headers=requester_auth_headers)
+    assert res_invalid.status_code == 422
+    assert "error" in res_invalid.json()
+
+
+def test_ticket_category_update_permissions(
+    client: TestClient,
+    requester_auth_headers: dict[str, str],
+    second_requester_auth_headers: dict[str, str],
+    agent_auth_headers: dict[str, str],
+    admin_auth_headers: dict[str, str],
+):
+    """
+    Test category update permissions:
+    - Ticket owner can update category while open.
+    - Ticket owner cannot update category while in_progress (403).
+    - Agents can update category anytime (while open or in_progress).
+    - Agents cannot update title/description/priority (403).
+    - Admins can update category anytime.
+    - Other requesters cannot edit ticket.
+    """
+    # Create ticket as requester
+    create_res = client.post(
+        "/api/v1/tickets",
+        json={"title": "Permissions Test", "description": "Desc", "category": "other"},
+        headers=requester_auth_headers,
+    )
+    ticket_id = create_res.json()["id"]
+
+    # 1. Owner updates category while open -> 200
+    res1 = client.patch(
+        f"/api/v1/tickets/{ticket_id}",
+        json={"category": "software"},
+        headers=requester_auth_headers,
+    )
+    assert res1.status_code == 200
+    assert res1.json()["category"] == "software"
+
+    # Transition to in_progress via agent
+    client.patch(
+        f"/api/v1/tickets/{ticket_id}/status",
+        json={"status": "in_progress"},
+        headers=agent_auth_headers,
+    )
+
+    # 2. Owner updates category while in_progress -> 403
+    res2 = client.patch(
+        f"/api/v1/tickets/{ticket_id}",
+        json={"category": "hardware"},
+        headers=requester_auth_headers,
+    )
+    assert res2.status_code == 403
+    assert res2.json()["error"]["message"] == "Requesters can only edit tickets while they are open"
+
+    # 3. Agent updates category while in_progress -> 200
+    res3 = client.patch(
+        f"/api/v1/tickets/{ticket_id}",
+        json={"category": "hardware"},
+        headers=agent_auth_headers,
+    )
+    assert res3.status_code == 200
+    assert res3.json()["category"] == "hardware"
+
+    # 4. Agent tries to update title -> 403
+    res4 = client.patch(
+        f"/api/v1/tickets/{ticket_id}",
+        json={"title": "Agent Hacked Title"},
+        headers=agent_auth_headers,
+    )
+    assert res4.status_code == 403
+    assert res4.json()["error"]["message"] == "Agents can only update ticket category"
+
+    # 5. Admin updates category -> 200
+    res5 = client.patch(
+        f"/api/v1/tickets/{ticket_id}",
+        json={"category": "access"},
+        headers=admin_auth_headers,
+    )
+    assert res5.status_code == 200
+    assert res5.json()["category"] == "access"
+
+    # 6. Another requester tries to update ticket -> 404 (not visible to them)
+    res6 = client.patch(
+        f"/api/v1/tickets/{ticket_id}",
+        json={"category": "email"},
+        headers=second_requester_auth_headers,
+    )
+    assert res6.status_code == 404
+
+

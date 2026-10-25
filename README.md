@@ -6,7 +6,7 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)
 ![MySQL 8](https://img.shields.io/badge/mysql-8.0-4479A1.svg)
-![Tests](https://img.shields.io/badge/tests-86%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-95%20passed-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)
 
 ---
@@ -95,6 +95,7 @@ erDiagram
         text description
         enum status
         enum priority
+        enum category
         int requester_id FK
         int assignee_id FK
         datetime due_at
@@ -141,10 +142,10 @@ All routes are prefixed with `/api/v1`. Interactive documentation is available a
 | `GET` | `/api/v1/users/me` | Retrieve profile of the currently authenticated user | Authenticated |
 | `GET` | `/api/v1/users` | List registered users with pagination parameters | Admin |
 | `PATCH` | `/api/v1/users/{id}/role` | Update role of a specific user | Admin |
-| `POST` | `/api/v1/tickets` | Create a new support ticket | Authenticated |
-| `GET` | `/api/v1/tickets` | List tickets with filters, keyword search, and pagination | Authenticated |
+| `POST` | `/api/v1/tickets` | Create a new support ticket (optional category, default `other`) | Authenticated |
+| `GET` | `/api/v1/tickets` | List tickets with filters (status, priority, category, assignee, overdue), search, and pagination | Authenticated |
 | `GET` | `/api/v1/tickets/{id}` | Get ticket details (returns 404 if accessed by foreign requester) | Authenticated |
-| `PATCH` | `/api/v1/tickets/{id}` | Update title, description, or priority | Owner (open) / Admin |
+| `PATCH` | `/api/v1/tickets/{id}` | Update title, description, priority, or category | Owner (open) / Agent (category) / Admin |
 | `PATCH` | `/api/v1/tickets/{id}/status` | Transition ticket status | Agent / Admin |
 | `PATCH` | `/api/v1/tickets/{id}/assign` | Assign ticket to an agent (transitions open -> in_progress) | Agent / Admin |
 | `POST` | `/api/v1/tickets/{id}/comments` | Add comment (staff can set `is_internal=true`) | Owner / Agent / Admin |
@@ -155,6 +156,10 @@ All routes are prefixed with `/api/v1`. Interactive documentation is available a
 | `GET` | `/api/v1/reports/resolution-time` | Average resolution hours per agent calculated via CTE | Agent / Admin |
 | `GET` | `/api/v1/reports/agent-ranking` | Agent performance ranking calculated via `RANK()` function | Agent / Admin |
 | `GET` | `/api/v1/reports/daily-volume` | Daily creation volume over a configurable window (1–90 days) | Agent / Admin |
+| `GET` | `/api/v1/reports/sla-breach-rate` | SLA breach rate and compliance counts per ticket priority | Agent / Admin |
+| `GET` | `/api/v1/reports/resolution-time-by-category` | Average resolution hours grouped by category and priority | Agent / Admin |
+| `GET` | `/api/v1/reports/agent-workload` | Agent workload summary: open work, overdue tickets, and resolved counts | Agent / Admin |
+| `GET` | `/api/v1/reports/tickets-by-category` | Ticket counts grouped by category, optionally broken down by status | Agent / Admin |
 | `GET` | `/api/v1/health` | Health check endpoint confirming API and database connectivity | Public |
 
 ---
@@ -219,11 +224,11 @@ For dashboard details, see [dashboard/README.md](dashboard/README.md).
 
 | Metric | Value |
 | :--- | :--- |
-| **Pytest Tests** | 86 passed, 1 skipped (87 collected) |
+| **Pytest Tests** | 95 passed, 1 skipped (96 collected) |
 | **Code Coverage** | 96% (`app`) |
-| **Database Migrations** | 4 Alembic migrations |
+| **Database Migrations** | 5 Alembic migrations |
 | **User Roles** | 3 (`requester`, `agent`, `admin`) |
-| **SQL Reports** | 5 raw SQL reports |
+| **SQL Reports** | 9 raw SQL reports |
 
 Run the test suite locally with coverage reporting:
 ```powershell

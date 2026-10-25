@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
-from app.models.enums import TicketPriority, TicketStatus
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus
 
 if TYPE_CHECKING:
     from app.models.comment import TicketComment
@@ -29,6 +29,13 @@ class Ticket(Base):
         sa.Enum(TicketPriority, name="ticket_priority", values_callable=lambda obj: [e.value for e in obj]),
         default=TicketPriority.MEDIUM,
         nullable=False,
+    )
+    category: Mapped[TicketCategory] = mapped_column(
+        sa.Enum(TicketCategory, name="ticket_category", values_callable=lambda obj: [e.value for e in obj]),
+        default=TicketCategory.OTHER,
+        server_default=sa.text("'other'"),
+        nullable=False,
+        index=True,
     )
     requester_id: Mapped[int] = mapped_column(
         sa.ForeignKey("users.id", ondelete="CASCADE"),

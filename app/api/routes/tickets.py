@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.enums import TicketPriority, TicketStatus
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus
 from app.models.user import User
 from app.schemas.comment import CommentCreate, CommentRead
 from app.schemas.history import StatusHistoryRead
@@ -58,6 +58,7 @@ def get_all_tickets(
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page, maximum 100"),
     status: Optional[TicketStatus] = Query(default=None, description="Filter by ticket status"),
     priority: Optional[TicketPriority] = Query(default=None, description="Filter by ticket priority"),
+    category: Optional[TicketCategory] = Query(default=None, description="Filter by ticket category"),
     assignee_id: Optional[int] = Query(default=None, description="Filter by assigned agent ID"),
     overdue: Optional[bool] = Query(default=None, description="Filter by overdue status"),
     q: Optional[str] = Query(default=None, description="Keyword search across title and description"),
@@ -81,6 +82,7 @@ def get_all_tickets(
         page_size=page_size,
         status=status,
         priority=priority,
+        category=category,
         assignee_id=assignee_id,
         overdue=overdue,
         q=q,

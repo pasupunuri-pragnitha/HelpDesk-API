@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from app.models.enums import TicketPriority, TicketStatus
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus
 
 
 class TicketCreate(BaseModel):
@@ -10,13 +10,15 @@ class TicketCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: str = Field(..., min_length=1)
     priority: TicketPriority = TicketPriority.MEDIUM
+    category: TicketCategory = TicketCategory.OTHER
 
 
 class TicketUpdate(BaseModel):
-    """Schema for updating ticket title, description, or priority."""
+    """Schema for updating ticket title, description, priority, or category."""
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, min_length=1)
     priority: Optional[TicketPriority] = None
+    category: Optional[TicketCategory] = None
 
 
 class TicketStatusUpdate(BaseModel):
@@ -36,6 +38,7 @@ class TicketRead(BaseModel):
     description: str
     status: TicketStatus
     priority: TicketPriority
+    category: TicketCategory
     requester_id: int
     assignee_id: Optional[int]
     due_at: Optional[datetime] = None

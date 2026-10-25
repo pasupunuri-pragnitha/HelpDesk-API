@@ -7,16 +7,24 @@ from app.db.session import get_db
 from app.models.enums import UserRole
 from app.schemas.report import (
     AgentRankingItem,
+    AgentWorkloadItem,
     DailyVolumeItem,
     OverdueTicketItem,
+    ResolutionTimeByCategoryItem,
     ResolutionTimeItem,
+    SLABreachRateItem,
+    TicketsByCategoryItem,
     TicketsByStatusItem,
 )
 from app.services.reports import (
     get_agent_ranking,
+    get_agent_workload,
     get_daily_volume,
     get_overdue_tickets,
     get_resolution_time,
+    get_resolution_time_by_category,
+    get_sla_breach_rate,
+    get_tickets_by_category,
     get_tickets_by_status,
 )
 
@@ -91,3 +99,60 @@ def report_daily_volume(
 ) -> Sequence[DailyVolumeItem]:
     """Report ticket creation count per calendar day using a CTE."""
     return get_daily_volume(db=db, days=days)
+
+
+@router.get(
+    "/sla-breach-rate",
+    response_model=list[SLABreachRateItem],
+    status_code=status.HTTP_200_OK,
+    summary="SLA breach rate per ticket priority",
+)
+def report_sla_breach_rate(
+    db: Session = Depends(get_db),
+) -> Sequence[SLABreachRateItem]:
+    """Report SLA breach rate and compliance counts per priority."""
+    return get_sla_breach_rate(db=db)
+
+
+@router.get(
+    "/resolution-time-by-category",
+    response_model=list[ResolutionTimeByCategoryItem],
+    status_code=status.HTTP_200_OK,
+    summary="Average resolution time in hours per category and priority",
+)
+def report_resolution_time_by_category(
+    db: Session = Depends(get_db),
+) -> Sequence[ResolutionTimeByCategoryItem]:
+    """Report average hours to first resolution grouped by category and priority."""
+    return get_resolution_time_by_category(db=db)
+
+
+@router.get(
+    "/agent-workload",
+    response_model=list[AgentWorkloadItem],
+    status_code=status.HTTP_200_OK,
+    summary="Agent workload summary",
+)
+def report_agent_workload(
+    db: Session = Depends(get_db),
+) -> Sequence[AgentWorkloadItem]:
+    """Report open work, overdue tickets, and resolved tickets per agent."""
+    return get_agent_workload(db=db)
+
+
+@router.get(
+    "/tickets-by-category",
+    response_model=list[TicketsByCategoryItem],
+    status_code=status.HTTP_200_OK,
+    summary="Count of tickets per category",
+)
+def report_tickets_by_category(
+    breakdown_by_status: bool = Query(
+        default=False,
+        description="Whether to break down category counts by status",
+    ),
+    db: Session = Depends(get_db),
+) -> Sequence[TicketsByCategoryItem]:
+    """Report count of tickets per category, optionally broken down by status."""
+    return get_tickets_by_category(db=db, breakdown_by_status=breakdown_by_status)
+

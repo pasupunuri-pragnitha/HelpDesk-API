@@ -4,15 +4,19 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.models.enums import TicketPriority, TicketStatus, UserRole
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
 from app.models.history import TicketStatusHistory
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.services.reports import (
     get_agent_ranking,
+    get_agent_workload,
     get_daily_volume,
     get_overdue_tickets,
     get_resolution_time,
+    get_resolution_time_by_category,
+    get_sla_breach_rate,
+    get_tickets_by_category,
     get_tickets_by_status,
 )
 
@@ -45,7 +49,7 @@ def mysql_session():
 
 def test_mysql_all_reports(mysql_session: Session):
     """
-    Integration test running all 5 reports against real MySQL 8.
+    Integration test running all 9 reports against real MySQL 8.
     Verifies MySQL TIMESTAMPDIFF, RANK() OVER, CTEs, and JOINs execute flawlessly.
     """
     now = datetime.now(timezone.utc)
@@ -65,6 +69,13 @@ def test_mysql_all_reports(mysql_session: Session):
         role=UserRole.AGENT,
         is_active=True,
     )
+    agent3 = User(
+        email="mysql_agent3@example.com",
+        full_name="MySQL Agent 3 (Idle)",
+        hashed_password="hash",
+        role=UserRole.AGENT,
+        is_active=True,
+    )
     requester = User(
         email="mysql_req@example.com",
         full_name="MySQL Requester",
@@ -72,7 +83,7 @@ def test_mysql_all_reports(mysql_session: Session):
         role=UserRole.REQUESTER,
         is_active=True,
     )
-    mysql_session.add_all([agent1, agent2, requester])
+    mysql_session.add_all([agent1, agent2, agent3, requester])
     mysql_session.flush()
 
     # 2. Seed tickets
@@ -82,6 +93,7 @@ def test_mysql_all_reports(mysql_session: Session):
         description="Desc",
         status=TicketStatus.OPEN,
         priority=TicketPriority.HIGH,
+        category=TicketCategory.NETWORK,
         requester_id=requester.id,
         assignee_id=agent1.id,
         due_at=now - timedelta(days=2),
@@ -94,6 +106,7 @@ def test_mysql_all_reports(mysql_session: Session):
         description="Desc",
         status=TicketStatus.IN_PROGRESS,
         priority=TicketPriority.MEDIUM,
+        category=TicketCategory.SOFTWARE,
         requester_id=requester.id,
         assignee_id=None,
         due_at=now - timedelta(days=1),
@@ -106,6 +119,7 @@ def test_mysql_all_reports(mysql_session: Session):
         description="Desc",
         status=TicketStatus.RESOLVED,
         priority=TicketPriority.LOW,
+        category=TicketCategory.HARDWARE,
         requester_id=requester.id,
         assignee_id=agent1.id,
         due_at=now + timedelta(days=1),
@@ -118,6 +132,7 @@ def test_mysql_all_reports(mysql_session: Session):
         description="Desc",
         status=TicketStatus.RESOLVED,
         priority=TicketPriority.URGENT,
+        category=TicketCategory.SOFTWARE,
         requester_id=requester.id,
         assignee_id=agent2.id,
         due_at=now + timedelta(days=1),
@@ -180,3 +195,40 @@ def test_mysql_all_reports(mysql_session: Session):
     # 5. Report: daily volume
     volume_report = get_daily_volume(mysql_session, days=30, current_time=now)
     assert len(volume_report) >= 1
+
+    # 6. Report: sla-breach-rate (verifying MySQL breach rate and compliance calculations)
+    breach_report = get_sla_breach_rate(mysql_session, current_time=now)
+    breach_map = {r["priority"]: r for r in breach_report}
+    assert "high" in breach_map
+    assert breach_map["high"]["breached_sla"] == 1
+    assert float(breach_map["high"]["breach_rate"]) == 100.0
+    assert "low" in breach_map
+    assert breach_map["low"]["met_sla"] == 1
+    assert float(breach_map["low"]["breach_rate"]) == 0.0
+
+    # 7. Report: resolution-time-by-category (verifying MySQL TIMESTAMPDIFF grouped by category)
+    res_cat_report = get_resolution_time_by_category(mysql_session)
+    res_cat_map = {(r["category"], r["priority"]): r for r in res_cat_report}
+    assert ("hardware", "low") in res_cat_map
+    assert round(float(res_cat_map[("hardware", "low")]["avg_resolution_hours"]), 1) == 4.0
+    assert ("software", "urgent") in res_cat_map
+    assert round(float(res_cat_map[("software", "urgent")]["avg_resolution_hours"]), 1) == 2.0
+
+    # 8. Report: agent-workload (verifying MySQL CTE and LEFT JOIN for 0-ticket agent)
+    workload_report = get_agent_workload(mysql_session, current_time=now)
+    workload_map = {r["agent_id"]: r for r in workload_report}
+    assert agent1.id in workload_map
+    assert workload_map[agent1.id]["open_tickets"] == 1
+    assert workload_map[agent1.id]["overdue_tickets"] == 1
+    assert workload_map[agent1.id]["resolved_tickets"] == 1
+    assert agent3.id in workload_map
+    assert workload_map[agent3.id]["open_tickets"] == 0
+    assert workload_map[agent3.id]["overdue_tickets"] == 0
+    assert workload_map[agent3.id]["resolved_tickets"] == 0
+
+    # 9. Report: tickets-by-category (with and without breakdown)
+    cat_report = get_tickets_by_category(mysql_session, breakdown_by_status=False)
+    assert len(cat_report) >= 3
+    cat_bd_report = get_tickets_by_category(mysql_session, breakdown_by_status=True)
+    assert len(cat_bd_report) >= 4
+

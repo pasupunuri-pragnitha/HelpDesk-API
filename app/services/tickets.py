@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
 from app.core.sla import calculate_due_at
-from app.models.enums import TicketPriority, TicketStatus, UserRole
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
 from app.models.history import TicketStatusHistory
 from app.models.ticket import Ticket
 from app.models.user import User
@@ -36,6 +36,7 @@ def create_ticket(
     - requester_id is set exclusively from current_user.
     - Status always starts as 'open'.
     - due_at is calculated as created_at + SLA hours for the chosen priority.
+    - category defaults to 'other' or the value provided.
     - Records initial status history (from_status=None -> to_status='open').
     """
     now = current_time or datetime.now(timezone.utc)
@@ -45,6 +46,7 @@ def create_ticket(
         title=ticket_in.title,
         description=ticket_in.description,
         priority=ticket_in.priority,
+        category=ticket_in.category,
         status=TicketStatus.OPEN,
         requester_id=current_user.id,
         assignee_id=None,
@@ -105,6 +107,7 @@ def list_tickets(
     page_size: int = 20,
     status: Optional[TicketStatus] = None,
     priority: Optional[TicketPriority] = None,
+    category: Optional[TicketCategory] = None,
     assignee_id: Optional[int] = None,
     overdue: Optional[bool] = None,
     q: Optional[str] = None,
@@ -116,7 +119,7 @@ def list_tickets(
     List tickets with pagination, filters, search, and sorting:
     - Requesters see only their own tickets.
     - Agents and admins see all tickets.
-    - Filters: status, priority, assignee_id, overdue (same rule as is_overdue).
+    - Filters: status, priority, category, assignee_id, overdue (same rule as is_overdue).
     - Keyword search 'q' across title and description with escaped wildcards.
     - Sorting by created_at, updated_at, or due_at with id as secondary tie-breaker.
     - total is computed from a separate count query on the filtered dataset.
@@ -160,6 +163,9 @@ def list_tickets(
 
     if priority is not None:
         stmt = stmt.where(Ticket.priority == priority)
+
+    if category is not None:
+        stmt = stmt.where(Ticket.category == category)
 
     if assignee_id is not None:
         stmt = stmt.where(Ticket.assignee_id == assignee_id)
@@ -219,9 +225,10 @@ def update_ticket(
     current_time: Optional[datetime] = None,
 ) -> Ticket:
     """
-    Update ticket title, description, or priority:
-    - Allowed for the ticket owner while the ticket is 'open'.
-    - Allowed for admins anytime.
+    Update ticket title, description, priority, or category:
+    - Allowed for the ticket owner while the ticket is 'open' (title, description, priority, category).
+    - Allowed for admins anytime (all fields).
+    - Allowed for agents anytime (category only).
     - Recalculates due_at from created_at if priority changes while open or in_progress.
     - Does not change due_at once the ticket is resolved or closed.
     """
@@ -229,17 +236,29 @@ def update_ticket(
 
     is_owner = ticket.requester_id == current_user.id
     is_admin = current_user.role == UserRole.ADMIN
+    is_agent = current_user.role == UserRole.AGENT
 
     if not is_admin:
-        if not is_owner:
+        if is_agent:
+            if (
+                ticket_in.title is not None
+                or ticket_in.description is not None
+                or ticket_in.priority is not None
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Agents can only update ticket category",
+                )
+        elif is_owner:
+            if ticket.status != TicketStatus.OPEN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Requesters can only edit tickets while they are open",
+                )
+        else:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have permission to edit this ticket",
-            )
-        if ticket.status != TicketStatus.OPEN:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Requesters can only edit tickets while they are open",
             )
 
     has_changed = False
@@ -257,6 +276,10 @@ def update_ticket(
         if ticket.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS):
             created = ticket.created_at if ticket.created_at.tzinfo else ticket.created_at.replace(tzinfo=timezone.utc)
             ticket.due_at = calculate_due_at(ticket.priority, created)
+
+    if ticket_in.category is not None and ticket_in.category != ticket.category:
+        ticket.category = ticket_in.category
+        has_changed = True
 
     if has_changed:
         ticket.updated_at = current_time or datetime.now(timezone.utc)

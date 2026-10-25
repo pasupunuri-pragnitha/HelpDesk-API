@@ -2,9 +2,13 @@ from app.schemas.comment import CommentCreate, CommentRead
 from app.schemas.history import StatusHistoryRead
 from app.schemas.report import (
     AgentRankingItem,
+    AgentWorkloadItem,
     DailyVolumeItem,
     OverdueTicketItem,
+    ResolutionTimeByCategoryItem,
     ResolutionTimeItem,
+    SLABreachRateItem,
+    TicketsByCategoryItem,
     TicketsByStatusItem,
 )
 from app.schemas.ticket import (
@@ -38,4 +42,9 @@ __all__ = [
     "ResolutionTimeItem",
     "AgentRankingItem",
     "DailyVolumeItem",
+    "SLABreachRateItem",
+    "ResolutionTimeByCategoryItem",
+    "AgentWorkloadItem",
+    "TicketsByCategoryItem",
 ]
+
