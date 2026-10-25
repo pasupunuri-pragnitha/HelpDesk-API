@@ -19,6 +19,7 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 - [Database Schema](#database-schema)
 - [API Overview](#api-overview)
 - [Quick Start](#quick-start)
+- [Demo Data](#demo-data)
 - [Testing & Quality](#testing--quality)
 - [Design Decisions](#design-decisions)
 - [Known Limitations](#known-limitations)
@@ -217,6 +218,32 @@ In a separate PowerShell terminal:
 streamlit run dashboard/app.py
 ```
 For dashboard details, see [dashboard/README.md](dashboard/README.md).
+
+---
+
+## Demo Data
+
+To populate the database with realistic sample tickets across all 6 categories, 4 priorities, workflow statuses, public/internal comments, and overdue SLA scenarios, run the demo seed script:
+
+```powershell
+# Using the safety confirmation flag
+python -m app.scripts.seed_demo --yes
+
+# Or via environment variable
+$env:ALLOW_DEMO_SEED="1"
+python -m app.scripts.seed_demo
+```
+
+### Demo Accounts
+
+| Role | Email | Password | Full Name |
+| :--- | :--- | :--- | :--- |
+| **Admin** | `admin@example.com` | `AdminPassword123!` | System Admin |
+| **Agent** | `agent@example.com` | `AgentPassword123!` | Asha Agent |
+| **Requester** | `requester@example.com` | `RequesterPassword123!` | Ravi Requester |
+
+> [!WARNING]
+> **Production Security Warning**: These demo accounts use well-known, public passwords. The seed script is strictly intended for local development, demonstration, and automated test environments. **Never run this script on or enable these accounts in a production deployment.**
 
 ---
 
