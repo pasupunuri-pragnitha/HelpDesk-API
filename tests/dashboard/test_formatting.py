@@ -106,3 +106,80 @@ def test_format_user_display():
     # Custom fallback parameter
     assert format_user_display(None, None, fallback_unassigned="Unassigned") == "Unassigned"
 
+
+def test_format_due_display(deterministic_timezone):
+    """
+    Test format_due_display helper:
+    - If sla_paused_at is set: returns 'SLA paused' in purple (#805ad5), never overdue.
+    - If is_overdue is True and not paused: returns red OVERDUE display.
+    - Otherwise: returns regular formatted due date.
+    """
+    from dashboard.formatting import format_due_display
+
+    due_str = "2026-10-25T10:27:00"
+
+    # 1. Paused ticket (even if is_overdue=True) MUST show 'SLA paused' in waiting colour and NEVER overdue
+    res_paused = format_due_display(
+        due_at=due_str,
+        is_overdue=True,
+        sla_paused_at="2026-10-25T08:00:00",
+    )
+    assert "SLA paused" in res_paused
+    assert "#805ad5" in res_paused
+    assert "OVERDUE" not in res_paused
+
+    # 2. Overdue ticket without pause
+    res_overdue = format_due_display(
+        due_at=due_str,
+        is_overdue=True,
+        sla_paused_at=None,
+    )
+    assert "OVERDUE" in res_overdue
+    assert "#e53e3e" in res_overdue
+    assert "Oct 25, 12:27" in res_overdue
+
+    # 3. Regular on-time ticket
+    res_regular = format_due_display(
+        due_at=due_str,
+        is_overdue=False,
+        sla_paused_at=None,
+    )
+    assert "Oct 25, 12:27" in res_regular
+    assert "OVERDUE" not in res_regular
+
+
+def test_get_transition_button_label():
+    """Test get_transition_button_label maps states to user-friendly action labels."""
+    from dashboard.formatting import get_transition_button_label
+
+    assert get_transition_button_label("waiting_on_requester", "in_progress") == "Resume work"
+    assert get_transition_button_label("in_progress", "waiting_on_requester") == "Pause SLA"
+    assert get_transition_button_label("in_progress", "resolved") == "Resolve ticket"
+    assert get_transition_button_label("open", "in_progress") == "Start work"
+    assert get_transition_button_label("resolved", "closed") == "Close ticket"
+    assert get_transition_button_label("resolved", "in_progress") == "Reopen ticket"
+
+    # Fallback formatting
+    assert get_transition_button_label("custom", "in_review") == "Move to In Review"
+
+
+def test_format_day_of_week():
+    """Test format_day_of_week computes weekday from date, datetime, or ISO string."""
+    from datetime import date
+    from dashboard.formatting import format_day_of_week
+
+    # Monday: 2026-10-26
+    assert format_day_of_week("2026-10-26") == "Monday"
+    assert format_day_of_week(date(2026, 10, 26)) == "Monday"
+    assert format_day_of_week(datetime(2026, 10, 26, 14, 30)) == "Monday"
+
+    # Friday: 2026-10-30
+    assert format_day_of_week("2026-10-30") == "Friday"
+
+    # Invalid / empty
+    assert format_day_of_week(None) == "-"
+    assert format_day_of_week("") == "-"
+    assert format_day_of_week("not-a-date") == "-"
+    assert format_day_of_week(12345) == "-"
+
+

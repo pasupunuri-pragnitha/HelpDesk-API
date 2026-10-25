@@ -13,14 +13,21 @@ A modern, interactive management portal and analytics dashboard for the HelpDesk
   - Full server-side pagination ("Page X of Y", "Showing a-b of N tickets") with automatic page-1 reset on filter adjustments.
   - Due dates highlighted in red with overdue indicators.
   - All timestamps automatically converted and formatted in the viewer's local timezone.
+  - Paused tickets clearly display "SLA paused" in purple and are never flagged as overdue.
   - Requester isolation enforced by backend API.
 - **Ticket Detail & Collaboration**:
-  - Status, priority, and category badges; SLA due dates; requester and assignee metadata.
+  - Status (`WAITING ON REQUESTER` in purple), priority, and category badges; SLA due dates; requester and assignee metadata.
+  - Paused SLA banner alerting staff that the clock is frozen, with current due date caption.
+  - Contextual status transition action buttons ("Pause SLA", "Resume work", "Resolve ticket", "Close ticket", "Reopen ticket", "Start work").
   - Category updates for ticket owners (while `open`) and staff (agents/admins anytime).
   - Comment stream with internal notes highlighted and labelled `[Internal]` for staff.
   - Ticket lifecycle status transitions with conflict handling (409 validation).
   - Agent assignment dropdown (with manual agent ID input fallback).
   - Status audit history timeline with local timezone timestamps.
+- **Holidays Management** *(Agent and Admin only)*:
+  - Overview of official organizational holidays skipping the SLA clock.
+  - Year filter and computed day-of-week display.
+  - Admin controls for registering new holidays with duplicate date conflict protection (409 error handling) and holiday deletion.
 - **Operational Analytics & KPI Reporting** *(Agent and Admin only)*:
   - Real-time KPI metric cards (Open, In Progress, Overdue, SLA Breach Rate %, and Average Resolution Hours).
   - Status distribution bar chart and Tickets by Category bar chart.

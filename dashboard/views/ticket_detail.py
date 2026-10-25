@@ -7,7 +7,12 @@ from dashboard.api_client import (
     HelpdeskAPIClient,
     SessionExpiredError,
 )
-from dashboard.formatting import format_datetime, format_user_display
+from dashboard.formatting import (
+    format_datetime,
+    format_user_display,
+    get_status_color,
+    get_transition_button_label,
+)
 
 # Workflow transitions allowed by Helpdesk API
 ALLOWED_STATUS_TRANSITIONS: dict[str, list[str]] = {
@@ -65,23 +70,36 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
 
     badge_cols = st.columns([2, 2, 2, 2, 4])
     with badge_cols[0]:
-        st.markdown(f"**Status:** `{ticket['status'].upper()}`")
+        st_color = get_status_color(ticket["status"])
+        st_label = ticket["status"].replace("_", " ").upper()
+        st.markdown(f"**Status:** <span style='background-color: {st_color}; color: white; padding: 3px 8px; border-radius: 4px; font-weight: bold;'>{st_label}</span>", unsafe_allow_html=True)
     with badge_cols[1]:
         st.markdown(f"**Priority:** *{ticket['priority'].upper()}*")
     with badge_cols[2]:
         cat_display = ticket.get("category", "other").capitalize()
         st.markdown(f"**Category:** `{cat_display}`")
     with badge_cols[3]:
-        if ticket.get("is_overdue"):
+        if ticket.get("sla_paused_at"):
+            st.markdown("<span style='background-color: #805ad5; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;'>⏸️ SLA PAUSED</span>", unsafe_allow_html=True)
+        elif ticket.get("is_overdue"):
             st.markdown("<span style='background-color: #e53e3e; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;'>🚨 OVERDUE</span>", unsafe_allow_html=True)
         else:
             st.markdown("<span style='background-color: #38a169; color: white; padding: 4px 8px; border-radius: 4px;'>ON TIME</span>", unsafe_allow_html=True)
     with badge_cols[4]:
         due_formatted = format_datetime(ticket.get("due_at"))
-        if ticket.get("is_overdue"):
+        if ticket.get("sla_paused_at"):
+            st.markdown(f"**SLA Due Date:** <span style='color: #805ad5; font-weight: bold;'>{due_formatted} (paused)</span>", unsafe_allow_html=True)
+        elif ticket.get("is_overdue"):
             st.markdown(f"**SLA Due Date:** <span style='color: #e53e3e; font-weight: bold;'>{due_formatted}</span>", unsafe_allow_html=True)
         else:
             st.markdown(f"**SLA Due Date:** {due_formatted}")
+
+    # Paused SLA Banner
+    if ticket.get("sla_paused_at"):
+        paused_formatted = format_datetime(ticket.get("sla_paused_at"))
+        current_due_formatted = format_datetime(ticket.get("due_at"))
+        st.info(f"⏸️ **SLA clock paused since {paused_formatted}**")
+        st.caption(f"Current due date: {current_due_formatted}. It moves forward when work resumes.")
 
     # Metadata & Description
     with st.expander("📄 Ticket Description & Metadata", expanded=True):
@@ -202,14 +220,12 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
                 if not allowed_next:
                     st.info(f"Ticket is `{current_status.upper()}`. No further transitions allowed.")
                 else:
-                    with st.form(f"status_form_{ticket_id}"):
-                        new_status = st.selectbox("Select next status", allowed_next, format_func=lambda s: s.upper())
-                        status_submit = st.form_submit_button("Update Status", use_container_width=True)
-
-                        if status_submit:
+                    for next_st in allowed_next:
+                        btn_label = get_transition_button_label(current_status, next_st)
+                        if st.button(btn_label, key=f"btn_status_{next_st}_{ticket_id}", use_container_width=True):
                             try:
-                                client.update_ticket_status(ticket_id=ticket_id, status=new_status)
-                                st.success(f"Status changed to {new_status.upper()}!")
+                                client.update_ticket_status(ticket_id=ticket_id, status=next_st)
+                                st.success(f"Status changed to {next_st.upper()}!")
                                 st.rerun()
                             except SessionExpiredError:
                                 st.session_state.clear()

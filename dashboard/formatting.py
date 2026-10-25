@@ -1,6 +1,4 @@
-"""Helper module for formatting timestamps and display tokens in the dashboard."""
-
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 STATUS_COLORS: dict[str, str] = {
@@ -95,4 +93,82 @@ def format_user_display(
     if user_id is not None and str(user_id).strip():
         return f"User #{user_id}"
     return fallback_unassigned
+
+
+def format_due_display(
+    due_at: Any,
+    is_overdue: bool = False,
+    sla_paused_at: Any = None,
+) -> str:
+    """
+    Format due display HTML for tickets list table.
+    - If sla_paused_at is set: shows 'SLA paused' in waiting_on_requester color (#805ad5), never overdue.
+    - If is_overdue is True and sla_paused_at is None: shows '⚠️ <due_at> (OVERDUE)' in red (#e53e3e).
+    - Otherwise: shows formatted due date.
+    """
+    if (
+        sla_paused_at is not None
+        and str(sla_paused_at).strip()
+        and str(sla_paused_at).lower() not in ("none", "null", "-")
+    ):
+        color = get_status_color("waiting_on_requester")
+        return f"<span style='color: {color}; font-weight: bold;'>SLA paused</span>"
+
+    formatted_due = format_datetime(due_at)
+    if is_overdue:
+        return f"<span style='color: #e53e3e; font-weight: bold;'>⚠️ {formatted_due} (OVERDUE)</span>"
+    return f"<span>{formatted_due}</span>"
+
+
+def get_transition_button_label(from_status: str, to_status: str) -> str:
+    """
+    Return human-readable button label for an allowed status transition.
+    - waiting_on_requester -> in_progress: 'Resume work'
+    - in_progress -> waiting_on_requester: 'Pause SLA'
+    - * -> resolved: 'Resolve ticket'
+    - * -> closed: 'Close ticket'
+    - resolved -> in_progress: 'Reopen ticket'
+    - open -> in_progress: 'Start work'
+    - Default fallback: 'Move to <Status>'
+    """
+    from_s = str(from_status).lower()
+    to_s = str(to_status).lower()
+
+    if from_s == "waiting_on_requester" and to_s == "in_progress":
+        return "Resume work"
+    if from_s == "in_progress" and to_s == "waiting_on_requester":
+        return "Pause SLA"
+    if to_s == "resolved":
+        return "Resolve ticket"
+    if to_s == "closed":
+        return "Close ticket"
+    if from_s == "resolved" and to_s == "in_progress":
+        return "Reopen ticket"
+    if from_s == "open" and to_s == "in_progress":
+        return "Start work"
+
+    return f"Move to {to_s.replace('_', ' ').title()}"
+
+
+def format_day_of_week(val: Any) -> str:
+    """Return the day of week name (e.g. 'Monday', 'Tuesday') for a date/datetime or ISO string."""
+    if val is None:
+        return "-"
+    if isinstance(val, str):
+        val_str = val.strip()
+        if not val_str or val_str.lower() in ("none", "null", "-"):
+            return "-"
+        try:
+            val = date.fromisoformat(val_str)
+        except Exception:
+            try:
+                val = datetime.fromisoformat(val_str).date()
+            except Exception:
+                return "-"
+    elif isinstance(val, datetime):
+        val = val.date()
+
+    if isinstance(val, date):
+        return val.strftime("%A")
+    return "-"
 

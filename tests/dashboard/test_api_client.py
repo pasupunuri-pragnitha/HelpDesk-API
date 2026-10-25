@@ -266,3 +266,108 @@ def test_new_reports_error_handling(api_client: HelpdeskAPIClient):
         with pytest.raises(APIConnectionError):
             api_client.get_report_tickets_by_category()
 
+
+def test_list_holidays(api_client: HelpdeskAPIClient):
+    """Test list_holidays with and without year filter."""
+    api_client.set_token("token_123")
+    mock_resp = mock.MagicMock(spec=requests.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = [{"id": 1, "holiday_date": "2026-01-01", "name": "New Year"}]
+
+    with mock.patch("requests.request", return_value=mock_resp) as mock_req:
+        res = api_client.list_holidays()
+        assert len(res) == 1
+        assert res[0]["name"] == "New Year"
+        assert mock_req.call_args[1]["params"] is None
+
+        api_client.list_holidays(year=2026)
+        assert mock_req.call_args[1]["params"] == {"year": 2026}
+
+
+def test_create_holiday_success_and_errors(api_client: HelpdeskAPIClient):
+    """Test create_holiday for success, 409 duplicate date, and 403 forbidden."""
+    api_client.set_token("token_admin")
+
+    # 1. Success
+    mock_201 = mock.MagicMock(spec=requests.Response)
+    mock_201.status_code = 201
+    mock_201.json.return_value = {"id": 10, "holiday_date": "2026-12-25", "name": "Christmas"}
+
+    with mock.patch("requests.request", return_value=mock_201) as mock_req:
+        res = api_client.create_holiday("2026-12-25", "Christmas")
+        assert res["id"] == 10
+        assert mock_req.call_args[1]["json"] == {"holiday_date": "2026-12-25", "name": "Christmas"}
+
+    # 2. 409 Conflict duplicate date
+    mock_409 = mock.MagicMock(spec=requests.Response)
+    mock_409.status_code = 409
+    mock_409.json.return_value = {"error": {"message": "A holiday is already registered for date 2026-12-25"}}
+
+    with mock.patch("requests.request", return_value=mock_409):
+        with pytest.raises(APIError) as exc_info:
+            api_client.create_holiday("2026-12-25", "Christmas")
+        assert exc_info.value.status_code == 409
+        assert "A holiday is already registered" in str(exc_info.value)
+
+    # 3. 403 Forbidden
+    mock_403 = mock.MagicMock(spec=requests.Response)
+    mock_403.status_code = 403
+    mock_403.json.return_value = {"error": {"message": "You do not have permission to access this resource"}}
+
+    with mock.patch("requests.request", return_value=mock_403):
+        with pytest.raises(APIError) as exc_info:
+            api_client.create_holiday("2026-12-25", "Christmas")
+        assert exc_info.value.status_code == 403
+        assert "permission" in str(exc_info.value)
+
+
+def test_delete_holiday_success_and_errors(api_client: HelpdeskAPIClient):
+    """Test delete_holiday success (204), 404 missing, 403 forbidden."""
+    api_client.set_token("token_admin")
+
+    # 1. Success 204
+    mock_204 = mock.MagicMock(spec=requests.Response)
+    mock_204.status_code = 204
+
+    with mock.patch("requests.request", return_value=mock_204) as mock_req:
+        res = api_client.delete_holiday(10)
+        assert res is None
+        assert mock_req.call_args[1]["url"].endswith("/holidays/10")
+
+    # 2. 404 Not Found
+    mock_404 = mock.MagicMock(spec=requests.Response)
+    mock_404.status_code = 404
+    mock_404.json.return_value = {"error": {"message": "Holiday not found"}}
+
+    with mock.patch("requests.request", return_value=mock_404):
+        with pytest.raises(APIError) as exc_info:
+            api_client.delete_holiday(999)
+        assert exc_info.value.status_code == 404
+        assert "Holiday not found" in str(exc_info.value)
+
+    # 3. 403 Forbidden
+    mock_403 = mock.MagicMock(spec=requests.Response)
+    mock_403.status_code = 403
+    mock_403.json.return_value = {"error": {"message": "Forbidden"}}
+
+    with mock.patch("requests.request", return_value=mock_403):
+        with pytest.raises(APIError) as exc_info:
+            api_client.delete_holiday(10)
+        assert exc_info.value.status_code == 403
+
+
+def test_holiday_session_expired_and_connection_error(api_client: HelpdeskAPIClient):
+    """Test 401 raises SessionExpiredError and network failure raises APIConnectionError."""
+    mock_401 = mock.MagicMock(spec=requests.Response)
+    mock_401.status_code = 401
+    mock_401.json.return_value = {"error": {"message": "Expired"}}
+
+    with mock.patch("requests.request", return_value=mock_401):
+        with pytest.raises(SessionExpiredError):
+            api_client.list_holidays()
+
+    with mock.patch("requests.request", side_effect=requests.exceptions.ConnectionError("Unreachable")):
+        with pytest.raises(APIConnectionError):
+            api_client.create_holiday("2026-05-01", "May Day")
+
+

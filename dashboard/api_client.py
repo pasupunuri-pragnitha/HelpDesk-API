@@ -281,6 +281,27 @@ class HelpdeskAPIClient:
         params = {"breakdown_by_status": "true"} if breakdown_by_status else None
         return self._request("GET", "/reports/tickets-by-category", params=params)
 
+    # --- Holidays (Agent & Admin) ---
+
+    def list_holidays(self, year: Optional[int] = None) -> list[dict[str, Any]]:
+        """List organizational public holidays ordered by date, with optional year filter."""
+        params: dict[str, Any] = {}
+        if year is not None:
+            params["year"] = int(year)
+        return self._request("GET", "/holidays", params=params or None)
+
+    def create_holiday(self, holiday_date: Any, name: str) -> dict[str, Any]:
+        """Register a new organizational holiday (Admin only)."""
+        return self._request(
+            "POST",
+            "/holidays",
+            json={"holiday_date": str(holiday_date), "name": name.strip()},
+        )
+
+    def delete_holiday(self, holiday_id: int) -> None:
+        """Delete an organizational holiday by ID (Admin only)."""
+        self._request("DELETE", f"/holidays/{holiday_id}")
+
 
 # Alias for convenience
 APIClient = HelpdeskAPIClient

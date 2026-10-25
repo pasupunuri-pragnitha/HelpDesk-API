@@ -16,6 +16,7 @@ from dashboard.api_client import (
     HelpdeskAPIClient,
     SessionExpiredError,
 )
+from dashboard.views.holidays import render_holidays
 from dashboard.views.login import render_login
 from dashboard.views.new_ticket import render_new_ticket
 from dashboard.views.reports import render_reports
@@ -53,6 +54,7 @@ def main() -> None:
     nav_options = ["Tickets", "New ticket"]
     if role in ("agent", "admin"):
         nav_options.append("Reports")
+        nav_options.append("Holidays")
 
     # Keep track of current page
     current_page = st.session_state.get("current_page", "Tickets")
@@ -87,6 +89,8 @@ def main() -> None:
             render_new_ticket(client)
         elif current_page == "Reports" and role in ("agent", "admin"):
             render_reports(client)
+        elif current_page == "Holidays" and role in ("agent", "admin"):
+            render_holidays(client)
         else:
             render_tickets_list(client)
     except SessionExpiredError:
