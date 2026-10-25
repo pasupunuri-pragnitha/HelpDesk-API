@@ -76,3 +76,27 @@ def test_color_and_category_tokens():
         assert PRIORITY_COLORS[p].startswith("#")
 
     assert set(CATEGORY_OPTIONS) == {"network", "hardware", "software", "access", "email", "other"}
+
+
+def test_format_user_display():
+    """Test format_user_display name preference, ID fallback, and '-' fallback."""
+    from dashboard.formatting import format_user_display
+
+    # Prefers name when provided
+    assert format_user_display("Asha Agent", 2) == "Asha Agent"
+    assert format_user_display("Ravi Requester", 3) == "Ravi Requester"
+    assert format_user_display("  Priya Patel  ", 4) == "Priya Patel"
+
+    # Falls back to User #<id> when name is None or blank
+    assert format_user_display(None, 5) == "User #5"
+    assert format_user_display("", 5) == "User #5"
+    assert format_user_display("   ", 5) == "User #5"
+
+    # Falls back to '-' when both are absent or empty
+    assert format_user_display(None, None) == "-"
+    assert format_user_display("", None) == "-"
+    assert format_user_display(None, "") == "-"
+
+    # Custom fallback parameter
+    assert format_user_display(None, None, fallback_unassigned="Unassigned") == "Unassigned"
+

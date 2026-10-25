@@ -85,3 +85,14 @@ class Ticket(Base):
         cascade="all, delete-orphan",
         order_by="TicketStatusHistory.created_at, TicketStatusHistory.id",
     )
+
+    @property
+    def requester_name(self) -> Optional[str]:
+        """Return the full name of the ticket requester, or None if unattached."""
+        return self.requester.full_name if self.requester else None
+
+    @property
+    def assignee_name(self) -> Optional[str]:
+        """Return the full name of the assigned agent, or None if unassigned."""
+        return self.assignee.full_name if self.assignee else None
+

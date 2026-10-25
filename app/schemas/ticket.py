@@ -41,6 +41,8 @@ class TicketRead(BaseModel):
     category: TicketCategory
     requester_id: int
     assignee_id: Optional[int]
+    requester_name: Optional[str] = None
+    assignee_name: Optional[str] = None
     due_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime

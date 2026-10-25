@@ -7,7 +7,7 @@ from dashboard.api_client import (
     HelpdeskAPIClient,
     SessionExpiredError,
 )
-from dashboard.formatting import format_datetime
+from dashboard.formatting import format_datetime, format_user_display
 
 # Workflow transitions allowed by Helpdesk API
 ALLOWED_STATUS_TRANSITIONS: dict[str, list[str]] = {
@@ -86,14 +86,9 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
         st.write(ticket["description"])
         st.divider()
         m_col1, m_col2, m_col3 = st.columns(3)
-        m_col1.caption(f"Requester ID: #{ticket['requester_id']}")
-        assignee_name = ticket.get("assignee_name")
-        if assignee_name:
-            assignee_txt = assignee_name
-        elif ticket.get("assignee_id"):
-            assignee_txt = f"User #{ticket['assignee_id']}"
-        else:
-            assignee_txt = "Unassigned"
+        requester_txt = format_user_display(ticket.get("requester_name"), ticket.get("requester_id"), fallback_unassigned="-")
+        m_col1.caption(f"Requester: {requester_txt}")
+        assignee_txt = format_user_display(ticket.get("assignee_name"), ticket.get("assignee_id"), fallback_unassigned="-")
         m_col2.caption(f"Assignee: {assignee_txt}")
         m_col3.caption(f"Created: {format_datetime(ticket.get('created_at'))}")
 

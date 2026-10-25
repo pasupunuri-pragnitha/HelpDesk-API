@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional, Sequence
 from fastapi import HTTPException, status
 import sqlalchemy as sa
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.sla import calculate_due_at
 from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
@@ -68,8 +68,7 @@ def create_ticket(
     db.add(history_entry)
 
     db.commit()
-    db.refresh(ticket)
-    return ticket
+    return get_ticket_by_id(db, ticket_id=ticket.id, current_user=current_user)
 
 
 def get_ticket_by_id(db: Session, ticket_id: int, current_user: User) -> Ticket:
@@ -78,8 +77,17 @@ def get_ticket_by_id(db: Session, ticket_id: int, current_user: User) -> Ticket:
     - If ticket doesn't exist: returns 404.
     - If user is a requester and not the owner: returns 404 (not 403).
     - Agents and admins can view any ticket.
+    - Eagerly loads requester and assignee to populate names.
     """
-    ticket = db.get(Ticket, ticket_id)
+    stmt = (
+        sa.select(Ticket)
+        .options(
+            joinedload(Ticket.requester),
+            joinedload(Ticket.assignee),
+        )
+        .where(Ticket.id == ticket_id)
+    )
+    ticket = db.scalars(stmt).unique().first()
     if not ticket:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -209,11 +217,18 @@ def list_tickets(
     else:
         stmt = stmt.order_by(col.desc(), Ticket.id.desc())
 
-    # 6. Pagination
+    # 6. Pagination & eager loading of related users to avoid N+1 queries
     offset = (page - 1) * page_size
-    stmt = stmt.offset(offset).limit(page_size)
+    stmt = (
+        stmt.offset(offset)
+        .limit(page_size)
+        .options(
+            joinedload(Ticket.requester),
+            joinedload(Ticket.assignee),
+        )
+    )
 
-    items = db.scalars(stmt).all()
+    items = db.scalars(stmt).unique().all()
     return items, total
 
 
@@ -284,7 +299,7 @@ def update_ticket(
     if has_changed:
         ticket.updated_at = current_time or datetime.now(timezone.utc)
         db.commit()
-        db.refresh(ticket)
+        return get_ticket_by_id(db, ticket_id=ticket.id, current_user=current_user)
 
     return ticket
 
@@ -335,8 +350,7 @@ def update_ticket_status(
     db.add(history_entry)
 
     db.commit()
-    db.refresh(ticket)
-    return ticket
+    return get_ticket_by_id(db, ticket_id=ticket.id, current_user=current_user)
 
 
 def assign_ticket(
@@ -400,8 +414,7 @@ def assign_ticket(
 
     ticket.updated_at = now
     db.commit()
-    db.refresh(ticket)
-    return ticket
+    return get_ticket_by_id(db, ticket_id=ticket.id, current_user=current_user)
 
 
 def get_ticket_status_history(

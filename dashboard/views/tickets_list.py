@@ -7,7 +7,7 @@ from dashboard.api_client import (
     HelpdeskAPIClient,
     SessionExpiredError,
 )
-from dashboard.formatting import format_datetime
+from dashboard.formatting import format_datetime, format_user_display
 
 
 def render_tickets_list(client: HelpdeskAPIClient) -> None:
@@ -131,12 +131,7 @@ def render_tickets_list(client: HelpdeskAPIClient) -> None:
             prio_val = t["priority"].upper()
 
             # Show assignee as a name if API returns it, otherwise User #<id>, and "-" if unassigned
-            if t.get("assignee_name"):
-                assignee = t["assignee_name"]
-            elif t.get("assignee_id"):
-                assignee = f"User #{t['assignee_id']}"
-            else:
-                assignee = "-"
+            assignee = format_user_display(t.get("assignee_name"), t.get("assignee_id"), fallback_unassigned="-")
 
             is_overdue = t.get("is_overdue", False)
             due_formatted = format_datetime(t.get("due_at"))

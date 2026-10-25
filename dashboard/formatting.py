@@ -73,3 +73,19 @@ def format_datetime(value: Any) -> str:
         return local_dt.strftime("%b %d, %H:%M")
     except Exception:
         return str(value)
+
+
+def format_user_display(
+    name: Any = None,
+    user_id: Any = None,
+    fallback_unassigned: str = "-",
+) -> str:
+    """
+    Format user display string preferring full name, falling back to 'User #<id>', or '-' if none.
+    """
+    if name is not None and str(name).strip():
+        return str(name).strip()
+    if user_id is not None and str(user_id).strip():
+        return f"User #{user_id}"
+    return fallback_unassigned
+
