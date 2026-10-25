@@ -1,7 +1,13 @@
 import math
 import streamlit as st
 
-from dashboard.api_client import APIConnectionError, APIError, HelpdeskAPIClient, SessionExpiredError
+from dashboard.api_client import (
+    APIConnectionError,
+    APIError,
+    HelpdeskAPIClient,
+    SessionExpiredError,
+)
+from dashboard.formatting import format_datetime
 
 
 def render_tickets_list(client: HelpdeskAPIClient) -> None:
@@ -11,14 +17,19 @@ def render_tickets_list(client: HelpdeskAPIClient) -> None:
     if "tickets_page" not in st.session_state:
         st.session_state.tickets_page = 1
 
-    # Filters row
-    col1, col2, col3, col4 = st.columns([2, 2, 3, 2])
+    def _reset_page() -> None:
+        """Reset pagination to page 1 whenever filters change."""
+        st.session_state.tickets_page = 1
+
+    # Filters row: Status, Priority, Category, Search keyword, Overdue only
+    col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 3, 2])
     with col1:
         status_filter = st.selectbox(
             "Status",
             ["All", "open", "in_progress", "resolved", "closed"],
             index=0,
             key="filter_status",
+            on_change=_reset_page,
         )
     with col2:
         priority_filter = st.selectbox(
@@ -26,17 +37,32 @@ def render_tickets_list(client: HelpdeskAPIClient) -> None:
             ["All", "low", "medium", "high", "urgent"],
             index=0,
             key="filter_priority",
+            on_change=_reset_page,
         )
     with col3:
-        search_query = st.text_input("Search keyword", placeholder="Title or description...", key="filter_q").strip()
+        category_filter = st.selectbox(
+            "Category",
+            ["All", "network", "hardware", "software", "access", "email", "other"],
+            index=0,
+            key="filter_category",
+            on_change=_reset_page,
+        )
     with col4:
+        search_query = st.text_input(
+            "Search keyword",
+            placeholder="Title or description...",
+            key="filter_q",
+            on_change=_reset_page,
+        ).strip()
+    with col5:
         st.write("")
         st.write("")
-        overdue_filter = st.checkbox("Overdue only", key="filter_overdue")
+        overdue_filter = st.checkbox("Overdue only", key="filter_overdue", on_change=_reset_page)
 
     # Wire to API query parameters (no client-side filtering)
     status_param = status_filter if status_filter != "All" else None
     priority_param = priority_filter if priority_filter != "All" else None
+    category_param = category_filter if category_filter != "All" else None
     overdue_param = True if overdue_filter else None
     q_param = search_query if search_query else None
 
@@ -49,6 +75,7 @@ def render_tickets_list(client: HelpdeskAPIClient) -> None:
             page_size=page_size,
             status=status_param,
             priority=priority_param,
+            category=category_param,
             overdue=overdue_param,
             q=q_param,
         )
@@ -79,26 +106,56 @@ def render_tickets_list(client: HelpdeskAPIClient) -> None:
     if not items:
         st.info("No tickets match the selected filters.")
     else:
+        # Table column widths: ID, Title, Category, Status, Priority, Assignee, Due, Action
+        col_widths = [1, 3, 2, 2, 2, 2, 3, 1]
+
+        # Column headers
+        with st.container():
+            h1, h2, h3, h4, h5, h6, h7, h8 = st.columns(col_widths)
+            h1.markdown("**ID**")
+            h2.markdown("**Title**")
+            h3.markdown("**Category**")
+            h4.markdown("**Status**")
+            h5.markdown("**Priority**")
+            h6.markdown("**Assignee**")
+            h7.markdown("**Due**")
+            h8.markdown("**Action**")
+            st.divider()
+
         # Render tickets
         for t in items:
             ticket_id = t["id"]
             title = t["title"]
+            cat_val = t.get("category", "other").capitalize()
             status_val = t["status"].upper()
             prio_val = t["priority"].upper()
-            assignee = f"User #{t['assignee_id']}" if t.get("assignee_id") else "Unassigned"
-            is_overdue = t.get("is_overdue", False)
-            due_at = t.get("due_at", "No due date")
 
-            due_display = f"<span style='color: #e53e3e; font-weight: bold;'>⚠️ {due_at} (OVERDUE)</span>" if is_overdue else f"<span>{due_at}</span>"
+            # Show assignee as a name if API returns it, otherwise User #<id>, and "-" if unassigned
+            if t.get("assignee_name"):
+                assignee = t["assignee_name"]
+            elif t.get("assignee_id"):
+                assignee = f"User #{t['assignee_id']}"
+            else:
+                assignee = "-"
+
+            is_overdue = t.get("is_overdue", False)
+            due_formatted = format_datetime(t.get("due_at"))
+
+            if is_overdue:
+                due_display = f"<span style='color: #e53e3e; font-weight: bold;'>⚠️ {due_formatted} (OVERDUE)</span>"
+            else:
+                due_display = f"<span>{due_formatted}</span>"
 
             with st.container():
-                c1, c2, c3, c4, c5, c6 = st.columns([1, 4, 2, 2, 3, 2])
+                c1, c2, c3, c4, c5, c6, c7, c8 = st.columns(col_widths)
                 c1.markdown(f"**#{ticket_id}**")
                 c2.markdown(f"**{title}**")
-                c3.markdown(f"`{status_val}`")
-                c4.markdown(f"*{prio_val}*")
-                c5.markdown(due_display, unsafe_allow_html=True)
-                if c6.button("View", key=f"btn_ticket_{ticket_id}", use_container_width=True):
+                c3.markdown(f"`{cat_val}`")
+                c4.markdown(f"`{status_val}`")
+                c5.markdown(f"*{prio_val}*")
+                c6.markdown(f"{assignee}")
+                c7.markdown(due_display, unsafe_allow_html=True)
+                if c8.button("View", key=f"btn_ticket_{ticket_id}", use_container_width=True):
                     st.session_state.selected_ticket_id = ticket_id
                     st.session_state.current_page = "Ticket Detail"
                     st.rerun()

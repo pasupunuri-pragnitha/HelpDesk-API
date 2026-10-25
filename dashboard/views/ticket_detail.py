@@ -1,7 +1,13 @@
 from typing import Any
 import streamlit as st
 
-from dashboard.api_client import APIConnectionError, APIError, HelpdeskAPIClient, SessionExpiredError
+from dashboard.api_client import (
+    APIConnectionError,
+    APIError,
+    HelpdeskAPIClient,
+    SessionExpiredError,
+)
+from dashboard.formatting import format_datetime
 
 # Workflow transitions allowed by Helpdesk API
 ALLOWED_STATUS_TRANSITIONS: dict[str, list[str]] = {
@@ -24,6 +30,7 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
 
     user = st.session_state.get("user", {})
     user_role = user.get("role", "requester")
+    user_id = user.get("id")
 
     # Header & Back button
     col_back, _ = st.columns([2, 8])
@@ -48,25 +55,31 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
         st.error(e.message)
         return
 
+    is_owner = (user_id is not None and user_id == ticket.get("requester_id"))
+    can_manage_actions = (user_role in ("agent", "admin") or is_owner)
+
     # Title & Badges
     st.markdown(f"## #{ticket['id']} — {ticket['title']}")
 
-    badge_cols = st.columns([2, 2, 2, 4])
+    badge_cols = st.columns([2, 2, 2, 2, 4])
     with badge_cols[0]:
         st.markdown(f"**Status:** `{ticket['status'].upper()}`")
     with badge_cols[1]:
         st.markdown(f"**Priority:** *{ticket['priority'].upper()}*")
     with badge_cols[2]:
+        cat_display = ticket.get("category", "other").capitalize()
+        st.markdown(f"**Category:** `{cat_display}`")
+    with badge_cols[3]:
         if ticket.get("is_overdue"):
             st.markdown("<span style='background-color: #e53e3e; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;'>🚨 OVERDUE</span>", unsafe_allow_html=True)
         else:
             st.markdown("<span style='background-color: #38a169; color: white; padding: 4px 8px; border-radius: 4px;'>ON TIME</span>", unsafe_allow_html=True)
-    with badge_cols[3]:
-        due_at = ticket.get("due_at") or "None"
+    with badge_cols[4]:
+        due_formatted = format_datetime(ticket.get("due_at"))
         if ticket.get("is_overdue"):
-            st.markdown(f"**SLA Due Date:** <span style='color: #e53e3e; font-weight: bold;'>{due_at}</span>", unsafe_allow_html=True)
+            st.markdown(f"**SLA Due Date:** <span style='color: #e53e3e; font-weight: bold;'>{due_formatted}</span>", unsafe_allow_html=True)
         else:
-            st.markdown(f"**SLA Due Date:** {due_at}")
+            st.markdown(f"**SLA Due Date:** {due_formatted}")
 
     # Metadata & Description
     with st.expander("📄 Ticket Description & Metadata", expanded=True):
@@ -74,12 +87,18 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
         st.divider()
         m_col1, m_col2, m_col3 = st.columns(3)
         m_col1.caption(f"Requester ID: #{ticket['requester_id']}")
-        assignee_txt = f"User #{ticket['assignee_id']}" if ticket.get("assignee_id") else "Unassigned"
+        assignee_name = ticket.get("assignee_name")
+        if assignee_name:
+            assignee_txt = assignee_name
+        elif ticket.get("assignee_id"):
+            assignee_txt = f"User #{ticket['assignee_id']}"
+        else:
+            assignee_txt = "Unassigned"
         m_col2.caption(f"Assignee: {assignee_txt}")
-        m_col3.caption(f"Created: {ticket['created_at']}")
+        m_col3.caption(f"Created: {format_datetime(ticket.get('created_at'))}")
 
-    # Main content layout: Left = Comments & History, Right = Actions (if agent/admin)
-    if user_role in ("agent", "admin"):
+    # Main content layout: Left = Comments & History, Right = Actions (if authorized)
+    if can_manage_actions:
         left_col, right_col = st.columns([6, 4])
     else:
         left_col = st.container()
@@ -93,7 +112,7 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
             for c in comments:
                 is_internal = c.get("is_internal", False)
                 author_label = f"User #{c['author_id']}"
-                created_label = c.get("created_at", "")
+                created_label = format_datetime(c.get("created_at"))
 
                 if is_internal:
                     st.warning(f"🔒 **[Internal]** *{author_label}* on {created_label}\n\n{c['body']}")
@@ -140,71 +159,29 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
                 from_st = h.get("from_status") or "Initial Creation"
                 to_st = h.get("to_status", "")
                 by_user = f"User #{h['changed_by_id']}" if h.get("changed_by_id") else "System"
-                h_date = h.get("created_at", "")
+                h_date = format_datetime(h.get("created_at"))
                 st.markdown(f"- **{from_st.upper()}** ➔ **{to_st.upper()}** by *{by_user}* on `{h_date}`")
 
-    # Actions panel (Staff only)
+    # Actions panel
     if right_col is not None:
         with right_col:
             st.markdown("### ⚙️ Actions Panel")
-            st.caption("Manage ticket lifecycle and assignment")
+            st.caption("Manage ticket lifecycle, category, and assignment")
 
-            # 1. Update Status
-            st.markdown("#### Change Status")
-            current_status = ticket["status"]
-            allowed_next = ALLOWED_STATUS_TRANSITIONS.get(current_status, [])
+            # 1. Update Category (Owner while open, Agent/Admin anytime)
+            st.markdown("#### Change Category")
+            categories = ["network", "hardware", "software", "access", "email", "other"]
+            current_cat = ticket.get("category", "other")
+            cat_idx = categories.index(current_cat) if current_cat in categories else 5
 
-            if not allowed_next:
-                st.info(f"Ticket is `{current_status.upper()}`. No further transitions allowed.")
-            else:
-                with st.form(f"status_form_{ticket_id}"):
-                    new_status = st.selectbox("Select next status", allowed_next, format_func=lambda s: s.upper())
-                    status_submit = st.form_submit_button("Update Status", use_container_width=True)
+            with st.form(f"category_form_{ticket_id}"):
+                new_category = st.selectbox("Select category", categories, index=cat_idx)
+                cat_submit = st.form_submit_button("Update Category", use_container_width=True)
 
-                    if status_submit:
-                        try:
-                            client.update_ticket_status(ticket_id=ticket_id, status=new_status)
-                            st.success(f"Status changed to {new_status.upper()}!")
-                            st.rerun()
-                        except SessionExpiredError:
-                            st.session_state.clear()
-                            st.session_state.session_expired_message = "Session expired, please log in again"
-                            st.rerun()
-                        except APIConnectionError as e:
-                            st.error(e.message)
-                        except APIError as e:
-                            # Shows 409 message if API rejects invalid transition
-                            st.error(f"Status update failed: {e.message}")
-
-            st.divider()
-
-            # 2. Assign Ticket
-            st.markdown("#### Assign Ticket")
-            agents_list: list[dict[str, Any]] = []
-
-            # Try loading agents from users endpoint if permitted (admin role)
-            if user_role == "admin":
-                try:
-                    all_users = client.list_users()
-                    agents_list = [u for u in all_users if u.get("role") == "agent" and u.get("is_active")]
-                except APIError:
-                    agents_list = []
-
-            with st.form(f"assign_form_{ticket_id}"):
-                if agents_list:
-                    agent_options = {f"{u['full_name']} (ID: {u['id']})": u['id'] for u in agents_list}
-                    selected_agent_label = st.selectbox("Select Agent", list(agent_options.keys()))
-                    chosen_agent_id = agent_options[selected_agent_label]
-                else:
-                    st.caption("Enter Agent User ID (listing users requires Admin role):")
-                    chosen_agent_id = st.number_input("Agent ID", min_value=1, step=1, value=1)
-
-                assign_submit = st.form_submit_button("Assign to Agent", use_container_width=True)
-
-                if assign_submit:
+                if cat_submit:
                     try:
-                        client.assign_ticket(ticket_id=ticket_id, assignee_id=int(chosen_agent_id))
-                        st.success(f"Assigned to agent #{chosen_agent_id}!")
+                        client.update_ticket(ticket_id=ticket_id, category=new_category)
+                        st.success(f"Category changed to {new_category}!")
                         st.rerun()
                     except SessionExpiredError:
                         st.session_state.clear()
@@ -213,4 +190,73 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
                     except APIConnectionError as e:
                         st.error(e.message)
                     except APIError as e:
-                        st.error(f"Assignment failed: {e.message}")
+                        # Displays API permission or validation error (e.g. 403)
+                        st.error(f"Category update failed: {e.message}")
+
+            # Staff-only controls
+            if user_role in ("agent", "admin"):
+                st.divider()
+
+                # 2. Update Status
+                st.markdown("#### Change Status")
+                current_status = ticket["status"]
+                allowed_next = ALLOWED_STATUS_TRANSITIONS.get(current_status, [])
+
+                if not allowed_next:
+                    st.info(f"Ticket is `{current_status.upper()}`. No further transitions allowed.")
+                else:
+                    with st.form(f"status_form_{ticket_id}"):
+                        new_status = st.selectbox("Select next status", allowed_next, format_func=lambda s: s.upper())
+                        status_submit = st.form_submit_button("Update Status", use_container_width=True)
+
+                        if status_submit:
+                            try:
+                                client.update_ticket_status(ticket_id=ticket_id, status=new_status)
+                                st.success(f"Status changed to {new_status.upper()}!")
+                                st.rerun()
+                            except SessionExpiredError:
+                                st.session_state.clear()
+                                st.session_state.session_expired_message = "Session expired, please log in again"
+                                st.rerun()
+                            except APIConnectionError as e:
+                                st.error(e.message)
+                            except APIError as e:
+                                st.error(f"Status update failed: {e.message}")
+
+                st.divider()
+
+                # 3. Assign Ticket
+                st.markdown("#### Assign Ticket")
+                agents_list: list[dict[str, Any]] = []
+
+                if user_role == "admin":
+                    try:
+                        all_users = client.list_users()
+                        agents_list = [u for u in all_users if u.get("role") == "agent" and u.get("is_active")]
+                    except APIError:
+                        agents_list = []
+
+                with st.form(f"assign_form_{ticket_id}"):
+                    if agents_list:
+                        agent_options = {f"{u['full_name']} (ID: {u['id']})": u['id'] for u in agents_list}
+                        selected_agent_label = st.selectbox("Select Agent", list(agent_options.keys()))
+                        chosen_agent_id = agent_options[selected_agent_label]
+                    else:
+                        st.caption("Enter Agent User ID (listing users requires Admin role):")
+                        chosen_agent_id = st.number_input("Agent ID", min_value=1, step=1, value=1)
+
+                    assign_submit = st.form_submit_button("Assign to Agent", use_container_width=True)
+
+                    if assign_submit:
+                        try:
+                            client.assign_ticket(ticket_id=ticket_id, assignee_id=int(chosen_agent_id))
+                            st.success(f"Assigned to agent #{chosen_agent_id}!")
+                            st.rerun()
+                        except SessionExpiredError:
+                            st.session_state.clear()
+                            st.session_state.session_expired_message = "Session expired, please log in again"
+                            st.rerun()
+                        except APIConnectionError as e:
+                            st.error(e.message)
+                        except APIError as e:
+                            st.error(f"Assignment failed: {e.message}")

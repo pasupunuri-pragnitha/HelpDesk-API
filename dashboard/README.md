@@ -8,21 +8,29 @@ A modern, interactive management portal and analytics dashboard for the HelpDesk
 
 - **Authentication & Registration**: Clean tabbed login and registration interface storing tokens exclusively in memory (`st.session_state`).
 - **Ticket Management**:
-  - Filter by Status, Priority, keyword search (`q`), and Overdue status.
-  - Full server-side pagination ("Page X of Y", "Showing a-b of N tickets").
+  - Filter by Status, Priority, Category (`network`, `hardware`, `software`, `access`, `email`, `other`), keyword search (`q`), and Overdue status.
+  - Column headers displaying ID, Title, Category, Status, Priority, Assignee, and Due date.
+  - Full server-side pagination ("Page X of Y", "Showing a-b of N tickets") with automatic page-1 reset on filter adjustments.
   - Due dates highlighted in red with overdue indicators.
+  - All timestamps automatically converted and formatted in the viewer's local timezone.
   - Requester isolation enforced by backend API.
 - **Ticket Detail & Collaboration**:
-  - Status and priority badges, SLA due dates, requester/assignee metadata.
+  - Status, priority, and category badges; SLA due dates; requester and assignee metadata.
+  - Category updates for ticket owners (while `open`) and staff (agents/admins anytime).
   - Comment stream with internal notes highlighted and labelled `[Internal]` for staff.
   - Ticket lifecycle status transitions with conflict handling (409 validation).
   - Agent assignment dropdown (with manual agent ID input fallback).
-  - Status audit history timeline.
+  - Status audit history timeline with local timezone timestamps.
 - **Operational Analytics & KPI Reporting** *(Agent and Admin only)*:
-  - Real-time KPI metric cards (Open, In Progress, Overdue, Average Resolution Hours).
-  - Status distribution bar chart.
-  - Agent rankings with tie handling (`RANK()` window function).
+  - Real-time KPI metric cards (Open, In Progress, Overdue, SLA Breach Rate %, and Average Resolution Hours).
+  - Status distribution bar chart and Tickets by Category bar chart.
+  - SLA breach rate by priority bar chart (comparing met vs breached tickets).
+  - Average resolution time by category bar chart.
+  - Agent rankings with tie handling (`RANK()` window function) and comprehensive Agent Workload table (open work, overdue tickets, and resolved counts).
   - Tickets created per day line chart with adjustable window (7–90 days).
+  - Division-by-zero protection and friendly empty-state notifications.
+
+> **Note on Timezones**: All timestamps (ticket creation, SLA due dates, comments, and status audit transitions) are stored and transmitted in UTC by the backend API and converted to the viewer's local machine timezone for display.
 
 ---
 

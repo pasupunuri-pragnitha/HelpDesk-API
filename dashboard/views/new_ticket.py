@@ -1,6 +1,12 @@
 import streamlit as st
 
-from dashboard.api_client import APIConnectionError, APIError, HelpdeskAPIClient, SessionExpiredError
+from dashboard.api_client import (
+    APIConnectionError,
+    APIError,
+    HelpdeskAPIClient,
+    SessionExpiredError,
+)
+from dashboard.formatting import format_datetime
 
 
 def render_new_ticket(client: HelpdeskAPIClient) -> None:
@@ -9,7 +15,17 @@ def render_new_ticket(client: HelpdeskAPIClient) -> None:
 
     with st.form("new_ticket_form"):
         title = st.text_input("Title", placeholder="e.g. Cannot access corporate VPN").strip()
-        priority = st.selectbox("Priority", ["low", "medium", "high", "urgent"], index=1)
+
+        col_prio, col_cat = st.columns(2)
+        with col_prio:
+            priority = st.selectbox("Priority", ["low", "medium", "high", "urgent"], index=1)
+        with col_cat:
+            category = st.selectbox(
+                "Category",
+                ["network", "hardware", "software", "access", "email", "other"],
+                index=5,
+            )
+
         description = st.text_area("Description", placeholder="Provide detailed steps or context...", height=150).strip()
 
         submitted = st.form_submit_button("Submit Ticket", use_container_width=True)
@@ -25,11 +41,14 @@ def render_new_ticket(client: HelpdeskAPIClient) -> None:
                         title=title,
                         description=description,
                         priority=priority,
+                        category=category,
                     )
-                    due_date = ticket.get("due_at", "N/A")
+                    due_date = format_datetime(ticket.get("due_at"))
                     st.success(
                         f"🎉 Ticket **#{ticket['id']}** created successfully!\n\n"
-                        f"**Priority:** {ticket['priority'].upper()} | **SLA Due Date:** {due_date}"
+                        f"**Category:** {ticket.get('category', 'other').capitalize()} | "
+                        f"**Priority:** {ticket['priority'].upper()} | "
+                        f"**SLA Due Date:** {due_date}"
                     )
                     st.session_state.last_created_ticket_id = ticket["id"]
                 except SessionExpiredError:

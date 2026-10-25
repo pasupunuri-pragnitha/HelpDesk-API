@@ -139,6 +139,7 @@ class HelpdeskAPIClient:
         page_size: int = 20,
         status: Optional[str] = None,
         priority: Optional[str] = None,
+        category: Optional[str] = None,
         assignee_id: Optional[int] = None,
         overdue: Optional[bool] = None,
         q: Optional[str] = None,
@@ -156,6 +157,8 @@ class HelpdeskAPIClient:
             params["status"] = status
         if priority:
             params["priority"] = priority
+        if category:
+            params["category"] = category
         if assignee_id is not None:
             params["assignee_id"] = assignee_id
         if overdue is not None:
@@ -174,13 +177,39 @@ class HelpdeskAPIClient:
         title: str,
         description: str,
         priority: str = "medium",
+        category: str = "other",
     ) -> dict[str, Any]:
         """Create a new ticket."""
         return self._request(
             "POST",
             "/tickets",
-            json={"title": title, "description": description, "priority": priority},
+            json={
+                "title": title,
+                "description": description,
+                "priority": priority,
+                "category": category,
+            },
         )
+
+    def update_ticket(
+        self,
+        ticket_id: int,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+        priority: Optional[str] = None,
+        category: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Update ticket title, description, priority, or category."""
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["title"] = title
+        if description is not None:
+            payload["description"] = description
+        if priority is not None:
+            payload["priority"] = priority
+        if category is not None:
+            payload["category"] = category
+        return self._request("PATCH", f"/tickets/{ticket_id}", json=payload)
 
     def update_ticket_status(self, ticket_id: int, status: str) -> dict[str, Any]:
         """Change ticket status."""
@@ -234,6 +263,23 @@ class HelpdeskAPIClient:
     def get_report_daily_volume(self, days: int = 30) -> list[dict[str, Any]]:
         """Get daily ticket volume over the last N days."""
         return self._request("GET", "/reports/daily-volume", params={"days": days})
+
+    def get_report_sla_breach_rate(self) -> list[dict[str, Any]]:
+        """Get SLA breach rate and compliance per ticket priority."""
+        return self._request("GET", "/reports/sla-breach-rate")
+
+    def get_report_resolution_time_by_category(self) -> list[dict[str, Any]]:
+        """Get average resolution time in hours grouped by category and priority."""
+        return self._request("GET", "/reports/resolution-time-by-category")
+
+    def get_report_agent_workload(self) -> list[dict[str, Any]]:
+        """Get open work, overdue tickets, and resolved tickets per agent."""
+        return self._request("GET", "/reports/agent-workload")
+
+    def get_report_tickets_by_category(self, breakdown_by_status: bool = False) -> list[dict[str, Any]]:
+        """Get count of tickets per category, optionally broken down by status."""
+        params = {"breakdown_by_status": "true"} if breakdown_by_status else None
+        return self._request("GET", "/reports/tickets-by-category", params=params)
 
 
 # Alias for convenience

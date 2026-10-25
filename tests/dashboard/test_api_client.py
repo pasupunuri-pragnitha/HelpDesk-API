@@ -80,7 +80,7 @@ def test_401_handling_raises_session_expired(api_client: HelpdeskAPIClient):
 
 
 def test_list_tickets_with_filters_and_pagination(api_client: HelpdeskAPIClient):
-    """Test list_tickets serializes pagination, sorting, search, and filters accurately."""
+    """Test list_tickets serializes pagination, sorting, search, category, and filters accurately."""
     api_client.set_token("token_abc")
 
     mock_resp = mock.MagicMock(spec=requests.Response)
@@ -93,6 +93,7 @@ def test_list_tickets_with_filters_and_pagination(api_client: HelpdeskAPIClient)
             page_size=15,
             status="open",
             priority="urgent",
+            category="hardware",
             assignee_id=5,
             overdue=True,
             q="database issue",
@@ -106,6 +107,7 @@ def test_list_tickets_with_filters_and_pagination(api_client: HelpdeskAPIClient)
             "page_size": 15,
             "status": "open",
             "priority": "urgent",
+            "category": "hardware",
             "assignee_id": 5,
             "overdue": "true",
             "q": "database issue",
@@ -116,7 +118,7 @@ def test_list_tickets_with_filters_and_pagination(api_client: HelpdeskAPIClient)
 
 
 def test_create_ticket(api_client: HelpdeskAPIClient):
-    """Test create_ticket passes title, description, priority in body."""
+    """Test create_ticket passes title, description, priority, category in body."""
     api_client.set_token("token_abc")
 
     mock_resp = mock.MagicMock(spec=requests.Response)
@@ -126,12 +128,19 @@ def test_create_ticket(api_client: HelpdeskAPIClient):
         "title": "Email server offline",
         "description": "Port 25 unreachable",
         "priority": "urgent",
+        "category": "email",
         "due_at": "2026-10-25T18:00:00Z",
     }
 
     with mock.patch("requests.request", return_value=mock_resp) as mock_req:
-        ticket = api_client.create_ticket("Email server offline", "Port 25 unreachable", priority="urgent")
+        ticket = api_client.create_ticket(
+            "Email server offline",
+            "Port 25 unreachable",
+            priority="urgent",
+            category="email",
+        )
         assert ticket["id"] == 101
+        assert ticket["category"] == "email"
         call_kwargs = mock_req.call_args[1]
         assert call_kwargs["method"] == "POST"
         assert call_kwargs["url"] == "http://testserver/api/v1/tickets"
@@ -139,7 +148,32 @@ def test_create_ticket(api_client: HelpdeskAPIClient):
             "title": "Email server offline",
             "description": "Port 25 unreachable",
             "priority": "urgent",
+            "category": "email",
         }
+
+
+def test_update_ticket(api_client: HelpdeskAPIClient):
+    """Test update_ticket sends PATCH with updated fields including category."""
+    api_client.set_token("token_abc")
+
+    mock_resp = mock.MagicMock(spec=requests.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "id": 101,
+        "title": "Updated Title",
+        "category": "software",
+    }
+
+    with mock.patch("requests.request", return_value=mock_resp) as mock_req:
+        res = api_client.update_ticket(
+            ticket_id=101,
+            category="software",
+        )
+        assert res["category"] == "software"
+        call_kwargs = mock_req.call_args[1]
+        assert call_kwargs["method"] == "PATCH"
+        assert call_kwargs["url"] == "http://testserver/api/v1/tickets/101"
+        assert call_kwargs["json"] == {"category": "software"}
 
 
 def test_change_status_409(api_client: HelpdeskAPIClient):
@@ -168,7 +202,7 @@ def test_connection_error(api_client: HelpdeskAPIClient):
 
 
 def test_reports_methods_and_routes(api_client: HelpdeskAPIClient):
-    """Test report client methods invoke the correct endpoints."""
+    """Test all 9 report client methods invoke the correct endpoints."""
     api_client.set_token("token_abc")
 
     mock_resp = mock.MagicMock(spec=requests.Response)
@@ -176,6 +210,7 @@ def test_reports_methods_and_routes(api_client: HelpdeskAPIClient):
     mock_resp.json.return_value = []
 
     with mock.patch("requests.request", return_value=mock_resp) as mock_req:
+        # 1. Existing 5 reports
         api_client.get_report_tickets_by_status()
         assert mock_req.call_args[1]["url"].endswith("/reports/tickets-by-status")
 
@@ -191,3 +226,43 @@ def test_reports_methods_and_routes(api_client: HelpdeskAPIClient):
         api_client.get_report_daily_volume(days=14)
         assert mock_req.call_args[1]["url"].endswith("/reports/daily-volume")
         assert mock_req.call_args[1]["params"] == {"days": 14}
+
+        # 2. Four new reports
+        api_client.get_report_sla_breach_rate()
+        assert mock_req.call_args[1]["url"].endswith("/reports/sla-breach-rate")
+
+        api_client.get_report_resolution_time_by_category()
+        assert mock_req.call_args[1]["url"].endswith("/reports/resolution-time-by-category")
+
+        api_client.get_report_agent_workload()
+        assert mock_req.call_args[1]["url"].endswith("/reports/agent-workload")
+
+        api_client.get_report_tickets_by_category(breakdown_by_status=False)
+        assert mock_req.call_args[1]["url"].endswith("/reports/tickets-by-category")
+        assert mock_req.call_args[1]["params"] is None
+
+        api_client.get_report_tickets_by_category(breakdown_by_status=True)
+        assert mock_req.call_args[1]["url"].endswith("/reports/tickets-by-category")
+        assert mock_req.call_args[1]["params"] == {"breakdown_by_status": "true"}
+
+
+def test_new_reports_error_handling(api_client: HelpdeskAPIClient):
+    """Test 401 and connection error handling on new report methods."""
+    api_client.set_token("expired_token")
+
+    mock_401 = mock.MagicMock(spec=requests.Response)
+    mock_401.status_code = 401
+    mock_401.json.return_value = {"error": {"message": "Invalid token"}}
+
+    with mock.patch("requests.request", return_value=mock_401):
+        with pytest.raises(SessionExpiredError):
+            api_client.get_report_sla_breach_rate()
+        with pytest.raises(SessionExpiredError):
+            api_client.get_report_agent_workload()
+
+    with mock.patch("requests.request", side_effect=requests.exceptions.ConnectionError("Down")):
+        with pytest.raises(APIConnectionError):
+            api_client.get_report_resolution_time_by_category()
+        with pytest.raises(APIConnectionError):
+            api_client.get_report_tickets_by_category()
+
