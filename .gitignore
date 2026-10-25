@@ -4,4 +4,6 @@ __pycache__/
 *.pyc
 .env
 .coverage
-htmlcov/
+htmlcov/
+*.db
+*.sqlite
