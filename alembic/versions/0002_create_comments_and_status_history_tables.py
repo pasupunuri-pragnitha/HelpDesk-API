@@ -70,12 +70,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop ticket_status_history table
-    op.drop_index(op.f("ix_ticket_status_history_ticket_id"), table_name="ticket_status_history")
-    op.drop_index(op.f("ix_ticket_status_history_id"), table_name="ticket_status_history")
+    # Drop tables in reverse dependency order (child tables first)
+    # Dropping the table automatically removes all associated indexes without triggering MySQL error 1553
     op.drop_table("ticket_status_history")
-
-    # Drop ticket_comments table
-    op.drop_index(op.f("ix_ticket_comments_ticket_id"), table_name="ticket_comments")
-    op.drop_index(op.f("ix_ticket_comments_id"), table_name="ticket_comments")
     op.drop_table("ticket_comments")
+
