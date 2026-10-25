@@ -1,0 +1,116 @@
+# HelpDesk Streamlit Dashboard
+
+A modern, interactive management portal and analytics dashboard for the HelpDesk API built with Streamlit.
+
+---
+
+## Features
+
+- **Authentication & Registration**: Clean tabbed login and registration interface storing tokens exclusively in memory (`st.session_state`).
+- **Ticket Management**:
+  - Filter by Status, Priority, keyword search (`q`), and Overdue status.
+  - Full server-side pagination ("Page X of Y", "Showing a-b of N tickets").
+  - Due dates highlighted in red with overdue indicators.
+  - Requester isolation enforced by backend API.
+- **Ticket Detail & Collaboration**:
+  - Status and priority badges, SLA due dates, requester/assignee metadata.
+  - Comment stream with internal notes highlighted and labelled `[Internal]` for staff.
+  - Ticket lifecycle status transitions with conflict handling (409 validation).
+  - Agent assignment dropdown (with manual agent ID input fallback).
+  - Status audit history timeline.
+- **Operational Analytics & KPI Reporting** *(Agent and Admin only)*:
+  - Real-time KPI metric cards (Open, In Progress, Overdue, Average Resolution Hours).
+  - Status distribution bar chart.
+  - Agent rankings with tie handling (`RANK()` window function).
+  - Tickets created per day line chart with adjustable window (7–90 days).
+
+---
+
+## Prerequisites & Installation
+
+Ensure you have a Python 3.11+ environment activated.
+
+Install dashboard dependencies:
+
+```powershell
+pip install -r dashboard/requirements.txt
+```
+
+---
+
+## Configuration
+
+The dashboard communicates with the backend API over HTTP. Configure the API endpoint using the environment variable:
+
+| Environment Variable | Description                       | Default                        |
+| -------------------- | --------------------------------- | ------------------------------ |
+| `HELPDESK_API_URL`   | Base URL of the Helpdesk REST API | `http://localhost:8000/api/v1` |
+
+---
+
+## Running the Application
+
+### 1. Start the HelpDesk API Backend
+
+From the project root in Windows PowerShell:
+
+```powershell
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Start the Streamlit Dashboard
+
+In a separate Windows PowerShell terminal:
+
+```powershell
+streamlit run dashboard/app.py
+```
+
+The dashboard will open automatically in your browser at `http://localhost:8501`.
+
+---
+
+## Demo Accounts Setup
+
+You can test different role-based views (Requester, Agent, Admin) with the following steps:
+
+### 1. Admin Account
+
+Generate an initial administrator account using the management script:
+
+```powershell
+python -m app.scripts.create_admin --email admin@example.com --password AdminPassword123! --name "System Admin"
+```
+
+### 2. Requester Account
+
+Requesters can self-register directly through the dashboard UI:
+
+1. Open `http://localhost:8501`.
+2. Click the **Register** tab.
+3. Fill in name, email (e.g. `requester@example.com`), and password (min 8 characters).
+4. Click **Create Account** and log in.
+
+### 3. Agent Account
+
+Create an agent account directly via an authenticated admin session or database:
+
+- An Admin can promote or create an agent, or you can register an account and update the `role` column to `'agent'` in the `users` table:
+
+```sql
+UPDATE users SET role = 'agent' WHERE email = 'agent@example.com';
+```
+
+---
+
+## Screenshots
+
+### Tickets Dashboard
+
+![Tickets List Screenshot](screenshots/tickets_list.png)
+*Tickets list showing search, filters, overdue warning indicators, and pagination controls.*
+
+### Reports & Analytics
+
+![Reports & Analytics Screenshot](screenshots/reports_analytics.png)
+*Analytics dashboard showing KPI metrics, status bar charts, agent ranking ties, and daily volume line chart.*

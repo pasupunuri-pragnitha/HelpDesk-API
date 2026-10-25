@@ -5,6 +5,7 @@
 A high-performance IT HelpDesk Ticketing REST API built with FastAPI, SQLAlchemy 2.x, MySQL 8, and Alembic.
 
 ## Features
+
 - **Authentication & RBAC**: Secure JWT-based authentication (bcrypt password hashing with UTF-8 byte validation) with role-based access control (`requester`, `agent`, `admin`).
 - **Ticket Workflow**: Strict status transitions (`open` -> `in_progress` -> `resolved` -> `closed`, plus reopen).
 - **Audit History & Comments**: Real-time status history logging and internal/public comment visibility filtering.
@@ -16,6 +17,13 @@ A high-performance IT HelpDesk Ticketing REST API built with FastAPI, SQLAlchemy
 ## Local Development & Testing
 
 ### Running Tests with Coverage
+
 ```bash
 pytest --cov=app --cov-report=term-missing --cov-fail-under=85
 ```
+
+## Dashboard
+
+An interactive Streamlit portal for requesters, agents, and administrators is available under `dashboard/`. It features ticket management, status transitions, internal notes, and analytics reports.
+
+See [dashboard/README.md](dashboard/README.md) for installation and run instructions.
