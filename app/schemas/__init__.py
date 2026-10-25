@@ -11,6 +11,7 @@ from app.schemas.report import (
     TicketsByCategoryItem,
     TicketsByStatusItem,
 )
+from app.schemas.holiday import HolidayCreate, HolidayRead
 from app.schemas.ticket import (
     PaginatedTickets,
     TicketAssign,
@@ -46,5 +47,8 @@ __all__ = [
     "ResolutionTimeByCategoryItem",
     "AgentWorkloadItem",
     "TicketsByCategoryItem",
+    "HolidayCreate",
+    "HolidayRead",
 ]
+
 

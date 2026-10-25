@@ -232,3 +232,72 @@ def test_mysql_all_reports(mysql_session: Session):
     cat_bd_report = get_tickets_by_category(mysql_session, breakdown_by_status=True)
     assert len(cat_bd_report) >= 4
 
+
+def test_mysql_waiting_on_requester_and_paused_sla(mysql_session: Session):
+    """
+    Integration test against MySQL 8 covering:
+    - tickets_by_status includes waiting_on_requester.
+    - overdue report excludes tickets in waiting_on_requester with sla_paused_at.
+    - sla_breach_rate treats waiting_on_requester as unresolved but not breached while paused.
+    - agent_workload counts waiting_on_requester as open work but not overdue.
+    """
+    now = datetime.now(timezone.utc)
+
+    agent = User(
+        email="mysql_wait_agent@example.com",
+        full_name="MySQL Waiting Agent",
+        hashed_password="hash",
+        role=UserRole.AGENT,
+        is_active=True,
+    )
+    requester = User(
+        email="mysql_wait_req@example.com",
+        full_name="MySQL Waiting Req",
+        hashed_password="hash",
+        role=UserRole.REQUESTER,
+        is_active=True,
+    )
+    mysql_session.add_all([agent, requester])
+    mysql_session.flush()
+
+    # Ticket in waiting_on_requester with past due_at but sla_paused_at set
+    t_paused = Ticket(
+        title="MySQL Paused Ticket",
+        description="Waiting for requester response",
+        status=TicketStatus.WAITING_ON_REQUESTER,
+        priority=TicketPriority.HIGH,
+        category=TicketCategory.SOFTWARE,
+        requester_id=requester.id,
+        assignee_id=agent.id,
+        due_at=now - timedelta(hours=2),
+        sla_paused_at=now - timedelta(hours=3),
+        created_at=now - timedelta(hours=8),
+        updated_at=now,
+    )
+    mysql_session.add(t_paused)
+    mysql_session.flush()
+
+    # 1. tickets_by_status
+    status_report = get_tickets_by_status(mysql_session)
+    status_counts = {(r["status"], r["priority"]): r["count"] for r in status_report}
+    assert ("waiting_on_requester", "high") in status_counts
+
+    # 2. overdue report excludes paused ticket
+    overdue_report = get_overdue_tickets(mysql_session, current_time=now)
+    overdue_ids = {r["id"] for r in overdue_report}
+    assert t_paused.id not in overdue_ids
+
+    # 3. sla_breach_rate treats waiting_on_requester as unresolved but not breached
+    breach_report = get_sla_breach_rate(mysql_session, current_time=now)
+    breach_map = {r["priority"]: r for r in breach_report}
+    assert "high" in breach_map
+    assert breach_map["high"]["met_sla"] >= 1
+
+    # 4. agent_workload counts waiting_on_requester as open work, not overdue
+    workload_report = get_agent_workload(mysql_session, current_time=now)
+    workload_map = {r["agent_id"]: r for r in workload_report}
+    assert agent.id in workload_map
+    assert workload_map[agent.id]["open_tickets"] == 1
+    assert workload_map[agent.id]["overdue_tickets"] == 0
+
+

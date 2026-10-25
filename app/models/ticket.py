@@ -50,6 +50,10 @@ class Ticket(Base):
         nullable=True,
         index=True,
     )
+    sla_paused_at: Mapped[Optional[datetime]] = mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=func.now(),

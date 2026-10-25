@@ -46,3 +46,25 @@ def test_startup_warning_when_placeholder_secret_used(caplog):
         assert "SECRET_KEY is set to a placeholder" in warning_records[0].message
     finally:
         settings.SECRET_KEY = original_secret
+
+
+def test_sla_settings_defaults_and_validation():
+    """Test SLA configuration defaults and startup validation checks."""
+    settings = Settings(_env_file=None)
+    assert settings.WORK_TIMEZONE == "Asia/Kolkata"
+    assert settings.WORK_DAY_START == "09:00"
+    assert settings.WORK_DAY_END == "18:00"
+    assert settings.WORK_DAYS == [0, 1, 2, 3, 4]
+
+    # Test invalid timezone
+    with pytest.raises(ValueError, match="Invalid WORK_TIMEZONE"):
+        Settings(_env_file=None, WORK_TIMEZONE="Invalid/Timezone")
+
+    # Test empty working days
+    with pytest.raises(ValueError, match="WORK_DAYS must contain at least one working day"):
+        Settings(_env_file=None, WORK_DAYS=[])
+
+    # Test start time not before end time
+    with pytest.raises(ValueError, match="must be strictly before WORK_DAY_END"):
+        Settings(_env_file=None, WORK_DAY_START="18:00", WORK_DAY_END="09:00")
+

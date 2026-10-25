@@ -67,9 +67,15 @@ def test_format_datetime_invalid_input():
 
 def test_color_and_category_tokens():
     """Test display colors and category constants."""
-    for s in ("open", "in_progress", "resolved", "closed"):
+    from dashboard.formatting import get_status_color
+
+    for s in ("open", "in_progress", "waiting_on_requester", "resolved", "closed"):
         assert s in STATUS_COLORS
         assert STATUS_COLORS[s].startswith("#")
+        assert get_status_color(s) == STATUS_COLORS[s]
+
+    # Safe fallback for unknown status
+    assert get_status_color("non_existent_status") == "#718096"
 
     for p in ("low", "medium", "high", "urgent"):
         assert p in PRIORITY_COLORS

@@ -9,7 +9,7 @@ def test_migrations_structure():
         [f for f in versions_dir.glob("*.py") if not f.name.startswith("__")],
         key=lambda p: p.name,
     )
-    assert len(migration_files) >= 4, "Expected at least 4 migrations in alembic/versions"
+    assert len(migration_files) >= 7, "Expected at least 7 migrations in alembic/versions"
 
     for migration_file in migration_files:
         spec = importlib.util.spec_from_file_location("migration_module", migration_file)

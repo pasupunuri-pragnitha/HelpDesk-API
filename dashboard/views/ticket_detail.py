@@ -12,10 +12,12 @@ from dashboard.formatting import format_datetime, format_user_display
 # Workflow transitions allowed by Helpdesk API
 ALLOWED_STATUS_TRANSITIONS: dict[str, list[str]] = {
     "open": ["in_progress"],
-    "in_progress": ["resolved"],
+    "in_progress": ["resolved", "waiting_on_requester"],
+    "waiting_on_requester": ["in_progress"],
     "resolved": ["closed", "in_progress"],
     "closed": [],
 }
+
 
 
 def render_ticket_detail(client: HelpdeskAPIClient) -> None:

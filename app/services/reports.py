@@ -63,6 +63,7 @@ def get_overdue_tickets(
         LEFT JOIN users a ON t.assignee_id = a.id
         WHERE t.due_at < :now
           AND t.status IN ('open', 'in_progress')
+          AND t.sla_paused_at IS NULL
         ORDER BY t.due_at ASC, t.id ASC
     """)
     result = db.execute(stmt, {"now": now})
@@ -199,7 +200,7 @@ def get_sla_breach_rate(
                 CASE 
                     WHEN t.due_at IS NOT NULL AND fr.resolved_at IS NOT NULL AND fr.resolved_at > t.due_at THEN 1
                     WHEN t.due_at IS NOT NULL AND fr.resolved_at IS NULL AND t.status IN ('resolved', 'closed') AND t.updated_at > t.due_at THEN 1
-                    WHEN t.due_at IS NOT NULL AND t.status IN ('open', 'in_progress') AND t.due_at < :now THEN 1
+                    WHEN t.due_at IS NOT NULL AND t.status IN ('open', 'in_progress', 'waiting_on_requester') AND t.sla_paused_at IS NULL AND t.due_at < :now THEN 1
                     ELSE 0
                 END AS is_breached
             FROM tickets t
@@ -285,7 +286,8 @@ def get_agent_workload(
                 u.full_name AS agent_name,
                 t.id AS ticket_id,
                 t.status,
-                t.due_at
+                t.due_at,
+                t.sla_paused_at
             FROM users u
             LEFT JOIN tickets t ON t.assignee_id = u.id
             WHERE u.role = 'agent'
@@ -293,8 +295,8 @@ def get_agent_workload(
         SELECT 
             agent_id,
             agent_name,
-            COUNT(CASE WHEN status IN ('open', 'in_progress') THEN 1 END) AS open_tickets,
-            COUNT(CASE WHEN status IN ('open', 'in_progress') AND due_at IS NOT NULL AND due_at < :now THEN 1 END) AS overdue_tickets,
+            COUNT(CASE WHEN status IN ('open', 'in_progress', 'waiting_on_requester') THEN 1 END) AS open_tickets,
+            COUNT(CASE WHEN status IN ('open', 'in_progress', 'waiting_on_requester') AND sla_paused_at IS NULL AND due_at IS NOT NULL AND due_at < :now THEN 1 END) AS overdue_tickets,
             COUNT(CASE WHEN status IN ('resolved', 'closed') THEN 1 END) AS resolved_tickets
         FROM agent_tickets
         GROUP BY agent_id, agent_name

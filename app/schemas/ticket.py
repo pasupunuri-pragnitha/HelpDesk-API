@@ -44,6 +44,7 @@ class TicketRead(BaseModel):
     requester_name: Optional[str] = None
     assignee_name: Optional[str] = None
     due_at: Optional[datetime] = None
+    sla_paused_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -54,8 +55,12 @@ class TicketRead(BaseModel):
     def is_overdue(self) -> bool:
         """
         Computed overdue flag:
-        Returns True only when due_at is in the past AND ticket is currently open or in_progress.
+        Returns True only when due_at is in the past, ticket is currently open or in_progress,
+        and SLA is not currently paused (sla_paused_at is None).
         """
+        if self.sla_paused_at is not None:
+            return False
+
         if self.due_at is None:
             return False
 
@@ -63,6 +68,7 @@ class TicketRead(BaseModel):
         due = self.due_at if self.due_at.tzinfo else self.due_at.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         return due < now and self.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS)
+
 
 
 class PaginatedTickets(BaseModel):

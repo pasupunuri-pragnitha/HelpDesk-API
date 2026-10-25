@@ -764,3 +764,68 @@ def test_report_tickets_by_category(
     assert bd_counts.get(("network", "in_progress")) == 1
     assert bd_counts.get(("hardware", "resolved")) == 1
 
+
+def test_reports_with_waiting_on_requester_and_paused_sla(
+    client: TestClient,
+    agent_auth_headers: dict[str, str],
+    agent_user: User,
+    db_session: Session,
+    requester_user: User,
+):
+    """
+    Test that reports properly handle waiting_on_requester status:
+    - tickets-by-status includes waiting_on_requester
+    - overdue excludes paused tickets even if due_at is in the past
+    - sla-breach-rate treats waiting_on_requester as unresolved but not overdue-while-paused (met_sla)
+    - agent-workload counts waiting_on_requester as open work but not overdue
+    """
+    now = datetime.now(timezone.utc)
+
+    # Ticket in waiting_on_requester with due_at in past and sla_paused_at set
+    t_paused = Ticket(
+        title="Paused Ticket",
+        description="Waiting on requester",
+        status=TicketStatus.WAITING_ON_REQUESTER,
+        priority=TicketPriority.HIGH,
+        category=TicketCategory.SOFTWARE,
+        requester_id=requester_user.id,
+        assignee_id=agent_user.id,
+        due_at=now - timedelta(hours=2),
+        sla_paused_at=now - timedelta(hours=3),
+        created_at=now - timedelta(hours=10),
+        updated_at=now,
+    )
+    db_session.add(t_paused)
+    db_session.commit()
+
+    # 1. tickets-by-status includes waiting_on_requester
+    res_status = client.get("/api/v1/reports/tickets-by-status", headers=agent_auth_headers)
+    assert res_status.status_code == 200
+    status_counts = {(r["status"], r["priority"]): r["count"] for r in res_status.json()}
+    assert status_counts.get(("waiting_on_requester", "high")) == 1
+
+    # 2. overdue report excludes paused tickets
+    res_overdue = client.get("/api/v1/reports/overdue", headers=agent_auth_headers)
+    assert res_overdue.status_code == 200
+    overdue_ids = [r["id"] for r in res_overdue.json()]
+    assert t_paused.id not in overdue_ids
+
+    # 3. sla-breach-rate treats waiting_on_requester as unresolved but not breached
+    res_sla = client.get("/api/v1/reports/sla-breach-rate", headers=agent_auth_headers)
+    assert res_sla.status_code == 200
+    sla_map = {r["priority"]: r for r in res_sla.json()}
+    assert "high" in sla_map
+    assert sla_map["high"]["total_tickets"] == 1
+    assert sla_map["high"]["breached_sla"] == 0
+    assert sla_map["high"]["met_sla"] == 1
+    assert float(sla_map["high"]["breach_rate"]) == 0.0
+
+    # 4. agent-workload counts waiting_on_requester as open work, but not overdue
+    res_workload = client.get("/api/v1/reports/agent-workload", headers=agent_auth_headers)
+    assert res_workload.status_code == 200
+    workload_map = {r["agent_id"]: r for r in res_workload.json()}
+    assert agent_user.id in workload_map
+    assert workload_map[agent_user.id]["open_tickets"] == 1
+    assert workload_map[agent_user.id]["overdue_tickets"] == 0
+
+

@@ -74,7 +74,7 @@ DEMO_TICKETS = [
         "priority": TicketPriority.MEDIUM,
         "owner_email": "requester@example.com",
         "assign_to_agent": True,
-        "final_status": TicketStatus.IN_PROGRESS,
+        "final_status": TicketStatus.WAITING_ON_REQUESTER,
         "is_overdue": False,
         "comments": [
             {
@@ -298,7 +298,14 @@ def _seed_demo_data(session: Session) -> dict[str, int]:
 
         # Transition to final status if needed
         final_status = t_spec["final_status"]
-        if final_status == TicketStatus.RESOLVED:
+        if final_status == TicketStatus.WAITING_ON_REQUESTER:
+            ticket = update_ticket_status(
+                session,
+                ticket_id=ticket.id,
+                status_in=TicketStatusUpdate(status=TicketStatus.WAITING_ON_REQUESTER),
+                current_user=agent_user,
+            )
+        elif final_status == TicketStatus.RESOLVED:
             ticket = update_ticket_status(
                 session,
                 ticket_id=ticket.id,

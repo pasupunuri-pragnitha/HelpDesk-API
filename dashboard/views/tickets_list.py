@@ -26,7 +26,7 @@ def render_tickets_list(client: HelpdeskAPIClient) -> None:
     with col1:
         status_filter = st.selectbox(
             "Status",
-            ["All", "open", "in_progress", "resolved", "closed"],
+            ["All", "open", "in_progress", "waiting_on_requester", "resolved", "closed"],
             index=0,
             key="filter_status",
             on_change=_reset_page,

@@ -109,6 +109,7 @@ def test_seed_demo_tickets_categories_priorities_and_workflow(db_session: Sessio
     statuses = {t.status for t in tickets}
     assert TicketStatus.OPEN in statuses
     assert TicketStatus.IN_PROGRESS in statuses
+    assert TicketStatus.WAITING_ON_REQUESTER in statuses
     assert TicketStatus.RESOLVED in statuses
     assert TicketStatus.CLOSED in statuses
 

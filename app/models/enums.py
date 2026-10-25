@@ -10,8 +10,10 @@ class UserRole(str, enum.Enum):
 class TicketStatus(str, enum.Enum):
     OPEN = "open"
     IN_PROGRESS = "in_progress"
+    WAITING_ON_REQUESTER = "waiting_on_requester"
     RESOLVED = "resolved"
     CLOSED = "closed"
+
 
 
 class TicketPriority(str, enum.Enum):

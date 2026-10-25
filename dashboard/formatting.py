@@ -4,11 +4,18 @@ from datetime import datetime, timezone
 from typing import Any
 
 STATUS_COLORS: dict[str, str] = {
-    "open": "#3182ce",        # Blue
-    "in_progress": "#dd6b20", # Orange
-    "resolved": "#38a169",    # Green
-    "closed": "#718096",      # Gray
+    "open": "#3182ce",                  # Blue
+    "in_progress": "#dd6b20",           # Orange
+    "waiting_on_requester": "#805ad5",  # Purple
+    "resolved": "#38a169",              # Green
+    "closed": "#718096",                # Gray
 }
+
+
+def get_status_color(status: str) -> str:
+    """Return hex color for a status, safely defaulting to #718096 for unknown statuses."""
+    return STATUS_COLORS.get(str(status).lower(), "#718096")
+
 
 PRIORITY_COLORS: dict[str, str] = {
     "urgent": "#e53e3e",      # Red

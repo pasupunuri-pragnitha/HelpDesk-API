@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 import sqlalchemy as sa
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.sla import calculate_due_at
+from app.core.sla import add_business_minutes, business_minutes_between, calculate_due_at
 from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
 from app.models.history import TicketStatusHistory
 from app.models.ticket import Ticket
@@ -15,11 +15,13 @@ from app.schemas.ticket import (
     TicketStatusUpdate,
     TicketUpdate,
 )
+from app.services.holidays import get_holiday_dates
 
 # Allowed status workflow transitions
 ALLOWED_STATUS_TRANSITIONS: dict[TicketStatus, set[TicketStatus]] = {
     TicketStatus.OPEN: {TicketStatus.IN_PROGRESS},
-    TicketStatus.IN_PROGRESS: {TicketStatus.RESOLVED},
+    TicketStatus.IN_PROGRESS: {TicketStatus.RESOLVED, TicketStatus.WAITING_ON_REQUESTER},
+    TicketStatus.WAITING_ON_REQUESTER: {TicketStatus.IN_PROGRESS},
     TicketStatus.RESOLVED: {TicketStatus.CLOSED, TicketStatus.IN_PROGRESS},
     TicketStatus.CLOSED: set(),
 }
@@ -40,7 +42,8 @@ def create_ticket(
     - Records initial status history (from_status=None -> to_status='open').
     """
     now = current_time or datetime.now(timezone.utc)
-    due_at = calculate_due_at(ticket_in.priority, now)
+    holidays = get_holiday_dates(db)
+    due_at = calculate_due_at(ticket_in.priority, now, holidays=holidays)
 
     ticket = Ticket(
         title=ticket_in.title,
@@ -51,6 +54,7 @@ def create_ticket(
         requester_id=current_user.id,
         assignee_id=None,
         due_at=due_at,
+        sla_paused_at=None,
         created_at=now,
         updated_at=now,
     )
@@ -185,6 +189,7 @@ def list_tickets(
                 Ticket.due_at.is_not(None),
                 Ticket.due_at < now,
                 Ticket.status.in_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+                Ticket.sla_paused_at.is_(None),
             )
         else:
             stmt = stmt.where(
@@ -192,6 +197,7 @@ def list_tickets(
                     Ticket.due_at.is_(None),
                     Ticket.due_at >= now,
                     Ticket.status.notin_([TicketStatus.OPEN, TicketStatus.IN_PROGRESS]),
+                    Ticket.sla_paused_at.is_not(None),
                 )
             )
 
@@ -290,7 +296,8 @@ def update_ticket(
         # Recalculate due_at from created_at only if open or in_progress
         if ticket.status in (TicketStatus.OPEN, TicketStatus.IN_PROGRESS):
             created = ticket.created_at if ticket.created_at.tzinfo else ticket.created_at.replace(tzinfo=timezone.utc)
-            ticket.due_at = calculate_due_at(ticket.priority, created)
+            holidays = get_holiday_dates(db)
+            ticket.due_at = calculate_due_at(ticket.priority, created, holidays=holidays)
 
     if ticket_in.category is not None and ticket_in.category != ticket.category:
         ticket.category = ticket_in.category
@@ -337,6 +344,18 @@ def update_ticket_status(
 
     now = current_time or datetime.now(timezone.utc)
     old_status = ticket.status
+
+    # Pausable SLA Clock
+    if status_in.status == TicketStatus.WAITING_ON_REQUESTER:
+        ticket.sla_paused_at = now
+    elif old_status == TicketStatus.WAITING_ON_REQUESTER and status_in.status == TicketStatus.IN_PROGRESS:
+        holidays = get_holiday_dates(db)
+        paused_start = ticket.sla_paused_at or now
+        paused_minutes = business_minutes_between(paused_start, now, holidays)
+        if ticket.due_at is not None and paused_minutes > 0:
+            ticket.due_at = add_business_minutes(ticket.due_at, paused_minutes, holidays)
+        ticket.sla_paused_at = None
+
     ticket.status = status_in.status
     ticket.updated_at = now
 
