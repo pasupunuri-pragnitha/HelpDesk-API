@@ -301,3 +301,64 @@ def test_mysql_waiting_on_requester_and_paused_sla(mysql_session: Session):
     assert workload_map[agent.id]["overdue_tickets"] == 0
 
 
+def test_mysql_ai_triage_and_embeddings(mysql_session: Session):
+    """
+    Integration test verifying TicketEmbedding binary storage, CASCADE deletion,
+    and triage similarity calculations against real MySQL 8.
+    """
+    now = datetime.now(timezone.utc)
+
+    user = User(
+        email="mysql_ai_user@example.com",
+        full_name="MySQL AI User",
+        hashed_password="hash",
+        role=UserRole.AGENT,
+        is_active=True,
+    )
+    mysql_session.add(user)
+    mysql_session.flush()
+
+    ticket = Ticket(
+        title="MySQL WiFi Outage",
+        description="WiFi connectivity failure on 3rd floor switch",
+        status=TicketStatus.OPEN,
+        category=TicketCategory.NETWORK,
+        priority=TicketPriority.HIGH,
+        requester_id=user.id,
+        created_at=now,
+        updated_at=now,
+    )
+    mysql_session.add(ticket)
+    mysql_session.flush()
+
+    from app.services.triage import sync_ticket_embedding, find_similar
+    from app.models.embedding import TicketEmbedding
+
+    # 1. Sync embedding into MySQL 8
+    sync_ticket_embedding(mysql_session, ticket)
+    mysql_session.flush()
+
+    emb = mysql_session.get(TicketEmbedding, ticket.id)
+    assert emb is not None
+    assert emb.model_name == "hashing"
+    assert emb.dim == 2048
+    assert len(emb.vector) == 2048 * 4  # float32 = 4 bytes per dim
+
+    # 2. Similarity search in MySQL 8
+    similar = find_similar(
+        db=mysql_session,
+        text="WiFi network connection broken",
+        current_user=user,
+        limit=5,
+    )
+    assert len(similar) >= 1
+    assert similar[0]["id"] == ticket.id
+    assert similar[0]["similarity"] > 0.0
+
+    # 3. Test ON DELETE CASCADE from Ticket to TicketEmbedding in MySQL 8
+    mysql_session.delete(ticket)
+    mysql_session.flush()
+    emb_after_del = mysql_session.get(TicketEmbedding, ticket.id)
+    assert emb_after_del is None
+
+

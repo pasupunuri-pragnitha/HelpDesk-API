@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     WORK_DAY_END: str = "18:00"
     WORK_DAYS: list[int] = [0, 1, 2, 3, 4]  # Monday=0 to Friday=4
 
+    # AI Triage and Duplicate Detection Settings
+    AI_EMBEDDER: str = "hashing"
+    AI_DUPLICATE_THRESHOLD: float = 0.80
+    AI_MIN_SIMILARITY: float = 0.12
+    AI_KNN_K: int = 5
+    AI_MAX_CANDIDATES: int = 5000
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -75,7 +82,34 @@ class Settings(BaseSettings):
                 f"WORK_DAY_START ({self.WORK_DAY_START}) must be strictly before WORK_DAY_END ({self.WORK_DAY_END})."
             )
 
+        # 4. AI Triage Settings validation
+        if self.AI_EMBEDDER not in ("hashing", "hashing-v2", "sbert"):
+            raise ValueError(
+                f"AI_EMBEDDER must be 'hashing', 'hashing-v2', or 'sbert', got '{self.AI_EMBEDDER}'"
+            )
+
+        if not (0.0 <= self.AI_MIN_SIMILARITY <= 1.0):
+            raise ValueError(f"AI_MIN_SIMILARITY must be between 0.0 and 1.0, got {self.AI_MIN_SIMILARITY}")
+
+        if not (0.0 <= self.AI_DUPLICATE_THRESHOLD <= 1.0):
+            raise ValueError(
+                f"AI_DUPLICATE_THRESHOLD must be between 0.0 and 1.0, got {self.AI_DUPLICATE_THRESHOLD}"
+            )
+
+        if self.AI_MIN_SIMILARITY > self.AI_DUPLICATE_THRESHOLD:
+            raise ValueError(
+                f"AI_MIN_SIMILARITY ({self.AI_MIN_SIMILARITY}) must not exceed "
+                f"AI_DUPLICATE_THRESHOLD ({self.AI_DUPLICATE_THRESHOLD})"
+            )
+
+        if self.AI_KNN_K < 1:
+            raise ValueError(f"AI_KNN_K must be at least 1, got {self.AI_KNN_K}")
+
+        if self.AI_MAX_CANDIDATES < 1:
+            raise ValueError(f"AI_MAX_CANDIDATES must be at least 1, got {self.AI_MAX_CANDIDATES}")
+
         return self
+
 
 
 settings = Settings()

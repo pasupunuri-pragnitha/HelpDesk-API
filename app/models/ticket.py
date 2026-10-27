@@ -9,6 +9,7 @@ from app.models.enums import TicketCategory, TicketPriority, TicketStatus
 
 if TYPE_CHECKING:
     from app.models.comment import TicketComment
+    from app.models.embedding import TicketEmbedding
     from app.models.history import TicketStatusHistory
     from app.models.user import User
 
@@ -88,6 +89,12 @@ class Ticket(Base):
         back_populates="ticket",
         cascade="all, delete-orphan",
         order_by="TicketStatusHistory.created_at, TicketStatusHistory.id",
+    )
+    embedding: Mapped[Optional["TicketEmbedding"]] = relationship(
+        "TicketEmbedding",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
 
     @property

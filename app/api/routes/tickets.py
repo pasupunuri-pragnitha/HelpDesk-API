@@ -1,13 +1,16 @@
 from typing import Literal, Optional, Sequence
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.ai.embedder import get_text_to_embed
 from app.api.deps import get_current_user
 from app.db.session import get_db
-from app.models.enums import TicketCategory, TicketPriority, TicketStatus
+from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
+from app.models.ticket import Ticket
 from app.models.user import User
 from app.schemas.comment import CommentCreate, CommentRead
 from app.schemas.history import StatusHistoryRead
+from app.schemas.triage import SimilarTicket
 from app.schemas.ticket import (
     PaginatedTickets,
     TicketAssign,
@@ -26,6 +29,7 @@ from app.services.tickets import (
     update_ticket,
     update_ticket_status,
 )
+from app.services.triage import find_similar
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -218,3 +222,43 @@ def get_ticket_history(
     Get the audit trail of status changes for a ticket. Owner, agents, and admins only.
     """
     return get_ticket_status_history(db, ticket_id=id, current_user=current_user)
+
+
+@router.get(
+    "/{id}/similar",
+    response_model=list[SimilarTicket],
+    status_code=status.HTTP_200_OK,
+    summary="Get similar tickets",
+)
+def get_similar_tickets(
+    id: int,
+    limit: int = Query(default=5, ge=1, le=20, description="Maximum number of similar tickets to return"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[SimilarTicket]:
+    """
+    Get tickets similar to this ticket, excluding itself.
+    Agent and admin only (403 for requesters, 404 if ticket does not exist).
+    """
+    if current_user.role not in (UserRole.AGENT, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only agents and admins can access similar tickets",
+        )
+
+    ticket = db.get(Ticket, id)
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket not found",
+        )
+
+    text = get_text_to_embed(ticket.title, ticket.description)
+    results = find_similar(
+        db=db,
+        text=text,
+        current_user=current_user,
+        exclude_ticket_id=ticket.id,
+        limit=limit,
+    )
+    return [SimilarTicket(**r) for r in results]

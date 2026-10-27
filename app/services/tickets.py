@@ -16,6 +16,7 @@ from app.schemas.ticket import (
     TicketUpdate,
 )
 from app.services.holidays import get_holiday_dates
+from app.services.triage import sync_ticket_embedding
 
 # Allowed status workflow transitions
 ALLOWED_STATUS_TRANSITIONS: dict[TicketStatus, set[TicketStatus]] = {
@@ -70,6 +71,9 @@ def create_ticket(
         created_at=now,
     )
     db.add(history_entry)
+
+    # Sync embedding (failure is logged and ignored to never break ticket creation)
+    sync_ticket_embedding(db, ticket)
 
     db.commit()
     return get_ticket_by_id(db, ticket_id=ticket.id, current_user=current_user)
@@ -283,12 +287,15 @@ def update_ticket(
             )
 
     has_changed = False
+    text_changed = False
     if ticket_in.title is not None and ticket_in.title != ticket.title:
         ticket.title = ticket_in.title
         has_changed = True
+        text_changed = True
     if ticket_in.description is not None and ticket_in.description != ticket.description:
         ticket.description = ticket_in.description
         has_changed = True
+        text_changed = True
     if ticket_in.priority is not None and ticket_in.priority != ticket.priority:
         ticket.priority = ticket_in.priority
         has_changed = True
@@ -304,6 +311,9 @@ def update_ticket(
         has_changed = True
 
     if has_changed:
+        if text_changed:
+            sync_ticket_embedding(db, ticket)
+
         ticket.updated_at = current_time or datetime.now(timezone.utc)
         db.commit()
         return get_ticket_by_id(db, ticket_id=ticket.id, current_user=current_user)

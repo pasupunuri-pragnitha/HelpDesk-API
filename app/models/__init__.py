@@ -1,4 +1,5 @@
 from app.models.comment import TicketComment
+from app.models.embedding import TicketEmbedding
 from app.models.enums import TicketCategory, TicketPriority, TicketStatus, UserRole
 from app.models.history import TicketStatusHistory
 from app.models.holiday import Holiday
@@ -15,6 +16,7 @@ __all__ = [
     "TicketComment",
     "TicketStatusHistory",
     "Holiday",
+    "TicketEmbedding",
 ]
 
 

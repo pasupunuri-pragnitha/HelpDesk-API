@@ -21,6 +21,7 @@ from app.schemas.ticket import (
     TicketUpdate,
 )
 from app.schemas.token import Token
+from app.schemas.triage import SimilarTicket, TriageSuggestRequest, TriageSuggestResponse
 from app.schemas.user import UserCreate, UserLogin, UserRead, UserRoleUpdate
 
 __all__ = [
@@ -49,6 +50,9 @@ __all__ = [
     "TicketsByCategoryItem",
     "HolidayCreate",
     "HolidayRead",
+    "SimilarTicket",
+    "TriageSuggestRequest",
+    "TriageSuggestResponse",
 ]
 
 
