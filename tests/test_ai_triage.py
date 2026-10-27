@@ -315,7 +315,7 @@ def test_triage_suggest_api_endpoint(client: TestClient, requester_auth_headers:
     assert "suggested_category" in data
     assert "confidence" in data
     assert data["possible_duplicates"] in ([], None) or isinstance(data["possible_duplicates"], list)
-    assert data["embedder"] == "hashing-v2"
+    assert data["embedder"] == get_embedder().name
 
     # 2. Validation error: empty title
     resp_empty = client.post(
@@ -413,7 +413,7 @@ def test_ticket_creation_and_update_embedding_sync(db_session: Session, admin_us
     ticket = create_ticket(db_session, ticket_in, admin_user)
     emb = db_session.get(TicketEmbedding, ticket.id)
     assert emb is not None
-    assert emb.model_name == "hashing-v2"
+    assert emb.model_name == get_embedder().name
     original_vector = emb.vector
 
     # 1. Update only priority or category -> text did not change, embedding unchanged

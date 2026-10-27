@@ -331,6 +331,7 @@ def test_mysql_ai_triage_and_embeddings(mysql_session: Session):
     mysql_session.add(ticket)
     mysql_session.flush()
 
+    from app.ai.embedder import get_embedder
     from app.services.triage import sync_ticket_embedding, find_similar
     from app.models.embedding import TicketEmbedding
 
@@ -340,9 +341,10 @@ def test_mysql_ai_triage_and_embeddings(mysql_session: Session):
 
     emb = mysql_session.get(TicketEmbedding, ticket.id)
     assert emb is not None
-    assert emb.model_name == "hashing"
-    assert emb.dim == 2048
-    assert len(emb.vector) == 2048 * 4  # float32 = 4 bytes per dim
+    active_embedder = get_embedder()
+    assert emb.model_name == active_embedder.name
+    assert emb.dim == active_embedder.dim
+    assert len(emb.vector) == active_embedder.dim * 4  # float32 = 4 bytes per dim
 
     # 2. Similarity search in MySQL 8
     similar = find_similar(
