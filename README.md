@@ -16,16 +16,12 @@ Role-based IT helpdesk ticketing REST API with business-hours SLA tracking, raw 
 
 | Metric / Dimension | Specification |
 | :--- | :--- |
-| **API Endpoints** | 29 REST endpoints across 25 distinct routes (`/api/v1`) |
+| **API Endpoints** | 29 REST endpoints (`/api/v1`) |
 | **Test Suite** | 181 collected tests (177 passed, 4 skipped without MySQL / optional dependencies) |
 | **Code Coverage** | 96% statement coverage (`app`) |
 | **Database Migrations** | 8 Alembic schema migration versions |
-| **Database Tables** | 6 relational tables (`users`, `tickets`, `ticket_comments`, `ticket_status_history`, `holidays`, `ticket_embeddings`) |
 | **SQL Reports** | 9 raw SQL analytical reports (CTEs, `RANK()` window functions) |
-| **User Roles** | 3 distinct RBAC roles (`requester`, `agent`, `admin`) |
-| **Codebase Size** | 12,343 lines of Python across 89 files (`app`: 4,486, `dashboard`: 1,797, `tests`: 6,060) |
-| **CI Automation** | 2 GitHub Actions jobs (Pytest & Coverage, MySQL 8 Migrations & Integration) |
-| **License** | MIT License (2026 Pasupunuri Pragnitha) |
+| **CI Jobs** | 2 GitHub Actions jobs (Pytest & Coverage, MySQL 8 Migrations & Integration) |
 
 ---
 
@@ -191,7 +187,10 @@ Full details: [docs/AI_TRIAGE.md](docs/AI_TRIAGE.md).
 
 ## API Overview
 
-All routes are prefixed with `/api/v1`. Interactive documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc). The API exposes **29 endpoints** across **25 distinct routes**:
+All routes are prefixed with `/api/v1`. Interactive documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc). The API exposes **29 REST endpoints**:
+
+<details>
+<summary>All 29 endpoints (click to expand)</summary>
 
 | Method | Endpoint | Description | Access |
 | :--- | :--- | :--- | :--- |
@@ -224,6 +223,8 @@ All routes are prefixed with `/api/v1`. Interactive documentation is available a
 | `GET` | `/api/v1/reports/agent-workload` | Agent workload summary: open work, overdue tickets, and resolved counts | Agent / Admin |
 | `GET` | `/api/v1/reports/tickets-by-category` | Ticket counts grouped by category, optionally broken down by status | Agent / Admin |
 | `GET` | `/api/v1/health` | Health check endpoint confirming API and database connectivity | Public |
+
+</details>
 
 ---
 
@@ -347,14 +348,6 @@ python -m app.scripts.seed_demo
 ---
 
 ## Testing & Quality
-
-| Metric | Value |
-| :--- | :--- |
-| **Pytest Tests** | 181 collected (177 passed, 4 skipped without optional dependencies/MySQL URL) |
-| **Code Coverage** | 96% statement coverage (`app`) |
-| **Database Migrations** | 8 Alembic schema migration versions |
-| **User Roles** | 3 (`requester`, `agent`, `admin`) |
-| **SQL Reports** | 9 raw SQL analytical reports |
 
 Run the test suite locally with coverage reporting:
 
