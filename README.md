@@ -180,111 +180,12 @@ erDiagram
 
 ## AI Triage & Duplicate Detection
 
-The AI layer provides automated, advisory category and priority suggestions as well as proactive duplicate ticket detection.
-
-### How It Works
-
-1. **Text Representation (Embeddings)**: When a ticket is created or updated, its `title` and `description` are embedded into a fixed-dimensional unit-norm (L2-normalized) numerical vector (`app/ai/embedder.py`).
-2. **Fast Cosine Similarity**: Because all vectors are normalized to unit length ($\|u\|_2 = \|v\|_2 = 1$), the cosine similarity between the query text and historical tickets reduces to an ultra-fast dot product:
-   $$\text{cosine\_similarity}(u, v) = u \cdot v$$
-3. **Category & Priority Suggestion**:
-   - Compares the issue against historically **resolved** and **closed** tickets with similarity $\ge$ `AI_MIN_SIMILARITY` (default: `0.12`).
-   - Retrieves the top $k$ neighbours (`AI_KNN_K`, default: `5`).
-   - Performs a similarity-weighted vote ($w_i = s_i$):
-     $$\text{Vote}(c) = \sum_{i \in \text{top-k},\, \text{label}_i = c} s_i$$
-   - Confidence is computed as the proportion of winning category weight over total neighbour weight:
-     $$\text{Confidence} = \frac{\text{Vote}(c^*)}{\sum_{i \in \text{top-k}} s_i}$$
-   - Returns `null` suggestions with `confidence = 0.0` if no neighbours exceed the minimum threshold.
-4. **Duplicate Detection**:
-   - Scans active, unresolved tickets (`open`, `in_progress`, `waiting_on_requester`) for high similarity ($\ge$ `AI_DUPLICATE_THRESHOLD`, default: `0.80`).
-5. **Strict Privacy Isolation**:
-   - Requesters **only** receive evidence items and possible duplicates from their own tickets (`requester_id == current_user.id`). They never see foreign ticket IDs, titles, or descriptions.
-   - Category and priority votes aggregate across the entire knowledge base without leaking individual ticket details.
-6. **Advisory by Design**: Suggestions never automatically mutate a ticket. They guide agents and requesters while keeping humans firmly in control. Failure of the AI layer never prevents ticket creation or updates.
-
-### Endpoints
-
-- `POST /api/v1/triage/suggest`: Computes advisory category/priority suggestions and duplicate candidates from `title` and `description` for any authenticated user.
-- `GET /api/v1/tickets/{id}/similar`: Returns similar tickets to an existing ticket, excluding itself. Restricted to `agent` and `admin` roles (returns 403 for requesters, 404 if ticket does not exist; optional `?limit=` between 1 and 20).
-
-### Configuration Settings
-
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `AI_EMBEDDER` | `"hashing"` | Active embedding backend (`hashing` / `hashing-v2` or `sbert`). |
-| `AI_DUPLICATE_THRESHOLD` | `0.80` | Minimum cosine similarity to flag an unresolved ticket as a duplicate. |
-| `AI_MIN_SIMILARITY` | `0.12` | Minimum cosine similarity required to participate in kNN voting. |
-| `AI_KNN_K` | `5` | Number of nearest neighbours used for category/priority voting. |
-| `AI_MAX_CANDIDATES` | `5000` | Maximum candidate pool loaded for similarity ranking. |
-
-### Optional Dense Embedder (Sentence-Transformers)
-
-The default `hashing-v2` backend requires zero downloads or external model weights. To enable dense semantic embeddings using `all-MiniLM-L6-v2`:
-
-```powershell
-pip install -r requirements-ai.txt
-```
-
-Then set `AI_EMBEDDER=sbert` in `.env`.
-
-### Benchmark & Evaluation
-
-Evaluation is performed via `app/scripts/eval_triage.py` on a synthetic evaluation dataset (`data/triage_eval.csv`, 120 synthetic tickets balanced across all 6 categories):
-
-```powershell
-# Standard evaluation on held-out test split (24 tickets)
-python -m app.scripts.eval_triage
-
-# Run 5-fold cross-validation sweep on train split only, then evaluate test split
-python -m app.scripts.eval_triage --tune
-```
-
-> [!NOTE]
-> The evaluation dataset `data/triage_eval.csv` is strictly synthetic benchmark demo data. The test split is never used for parameter tuning.
-
-#### 5-Fold Cross-Validation on Train Split Only ($N=96$)
-
-Threshold tuning for `AI_MIN_SIMILARITY` was conducted via 5-fold stratified cross-validation exclusively on the 96 training tickets:
-
-| `min_sim` | Coverage | Acc (when made) | Overall Acc (inc No Sugg) | Priority Overall |
-| :--- | :--- | :--- | :--- | :--- |
-| `0.05` | 100.0% | 59.5% | 59.5% | 33.6% |
-| `0.08` | 100.0% | 59.5% | 59.5% | 33.6% |
-| `0.10` | 100.0% | 59.5% | 59.5% | 33.6% |
-| **`0.12`** *(chosen)* | **100.0%** | **60.6%** | **60.6%** | **33.6%** |
-| `0.15` | 94.7% | 56.3% | 53.3% | 37.7% |
-| `0.18` | 75.0% | 54.6% | 40.6% | 32.5% |
-| `0.20` | 52.0% | 64.0% | 33.3% | 23.1% |
-| `0.25` | 16.5% | 64.3% | 10.3% | 6.2% |
-| `0.30` | 4.1% | 0.0% | 0.0% | 0.0% |
-
-**Why `0.12` was selected**: On the training folds, `0.12` achieves 100% suggestion coverage while maximizing overall category accuracy at 60.6%. Higher thresholds like `0.20` drop coverage sharply (down to 52.0% coverage and 33.3% overall accuracy), rejecting viable suggestions as "no suggestion".
-
-#### Final Evaluation on Test Split ($N=24$)
-
-| Metric | Before (`hashing`, sim=0.20) | After (`hashing-v2`, sim=0.12) | Random Chance | Majority Class |
-| :--- | :--- | :--- | :--- | :--- |
-| **Suggestion Coverage** | 16.67% (4/24) | **100.00%** (24/24) | — | — |
-| **Category Accuracy (Overall)** | 16.67% (4/24) | **58.33%** (14/24) | 16.67% (1 of 6) | 16.67% (20/120) |
-| **Category Acc (When Made)** | 16.67% (4/24) | **58.33%** (14/24) | 16.67% | 16.67% |
-| **Priority Accuracy (Overall)** | 8.33% (2/24) | **37.50%** (9/24) | 25.00% (1 of 4) | 38.33% |
-| **Priority Acc (When Made)** | 8.33% (2/24) | **37.50%** (9/24) | 25.00% | 38.33% |
-
-**Per-Category Accuracy Breakdown (`hashing-v2`)**:
-- `access`: **100.00%** (4/4)
-- `hardware`: **75.00%** (3/4)
-- `network`: **75.00%** (3/4)
-- `email`: **50.00%** (2/4)
-- `other`: **25.00%** (1/4)
-- `software`: **25.00%** (1/4)
-
-#### Interview Talking Point: How did you evaluate AI triage and what were the trade-offs?
-
-> *"Our initial baseline had an unacceptable 83% 'no suggestion' rate because an uncalibrated threshold (0.20) sat above the median cosine similarity of word-only sparse vectors, and common English stop words diluted signal. We redesigned the embedder (`hashing-v2`) to combine word 1-2 grams with stop words removed and sublinear TF scaling ($1 + \log(\text{tf})$) alongside character 3-5 n-grams for morphological resilience ('disconnects' vs 'disconnecting'), normalized to 4096 dimensions.*
->
-> *We tuned `AI_MIN_SIMILARITY` honestly using 5-fold cross-validation strictly on the training set (never touching the test set), identifying 0.12 as the optimal operating point balancing 100% coverage and 60.6% training accuracy. On the held-out test split, overall category accuracy jumped from 16.67% (chance level) to 58.33% (14/24), ~3.5x higher than random chance (16.67%). Priority accuracy stands at 37.50%—priority is inherently more subjective across ticket creators.*
->
-> *The remaining gap to higher accuracy stems from dataset scale (only 16 training tickets per class) and semantic overlap across IT domains (e.g., 'backup drive' spanning Hardware vs Network). Because the embedder interface is fully decoupled, production deployments needing >80% accuracy can seamlessly drop in sentence-transformers (`sbert`) with zero database schema or service modifications."*
+Automated category and priority suggestions and duplicate detection over ticket text using L2-normalized cosine embeddings.
+Recommendations are strictly advisory and never mutate tickets automatically; agents and users retain full control.
+Requesters only see evidence items and duplicate candidates from their own tickets, maintaining strict privacy isolation.
+The service exposes `POST /api/v1/triage/suggest` (advisory triage and duplicates) and `GET /api/v1/tickets/{id}/similar` (staff only).
+On the benchmark dataset (`data/triage_eval.csv`, synthetic tickets), category accuracy reaches 58.33% vs 16.67% random chance.
+Full details: [docs/AI_TRIAGE.md](docs/AI_TRIAGE.md).
 
 ---
 
@@ -352,6 +253,7 @@ pip install -r dashboard/requirements.txt
 ```
 
 > **Optional**: To enable the optional dense semantic embedding backend (`sbert` / `sentence-transformers`), also install:
+>
 > ```powershell
 > pip install -r requirements-ai.txt
 > ```
@@ -479,7 +381,7 @@ GitHub Actions CI runs the full test suite with coverage enforcement and execute
 
 ## Known Limitations
 
-- **Lexical vs. Semantic AI Triage**: The default `hashing-v2` backend uses sublinear-scaled word n-grams (with stop words removed) and character 3-5 n-grams (dim=4096). On our benchmark dataset, category accuracy reaches 58.33% with 100% suggestion coverage (at threshold 0.12). For enterprise semantic understanding with deep context, install `requirements-ai.txt` to enable the `sbert` (`all-MiniLM-L6-v2`) embedder. Accuracy scales naturally as the volume of resolved tickets grows.
+- **Lexical vs. Semantic AI Triage**: The default `hashing-v2` backend uses sublinear-scaled word n-grams (with stop words removed) and character 3-5 n-grams (dim=4096). On our benchmark dataset, category accuracy reaches 58.33% with 100% suggestion coverage (at threshold 0.12). sbert is supported as an optional pluggable embedder (requirements-ai.txt) but has not been measured on this dataset.
 - **Offset Pagination**: Pagination uses standard SQL `LIMIT` / `OFFSET`, which is straightforward for moderate datasets but less performant on massive tables than keyset pagination.
 - **User Roster Access**: Only admins can list users; agents must input target agent IDs manually when assigning tickets.
 - **No Email Notifications**: Ticket lifecycle events and comments are tracked in database history rather than sending outbound email alerts.
@@ -534,6 +436,7 @@ This project is licensed under the [MIT License](LICENSE) - see the [LICENSE](LI
 
 ## Author
 
-**Pasupunuri Pragnitha**  
+Pasupunuri Pragnitha
+
 - GitHub: [pasupunuri-pragnitha](https://github.com/pasupunuri-pragnitha)  
 - LinkedIn: [pragnitha-pasupunuri](https://www.linkedin.com/in/pragnitha-pasupunuri)
