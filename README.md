@@ -1,6 +1,6 @@
 # HelpDesk API
 
-Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a Streamlit dashboard.
+Role-based IT helpdesk ticketing REST API with business-hours SLA tracking, raw SQL reports, AI triage suggestions, and a Streamlit dashboard.
 
 [![CI](https://github.com/pasupunuri-pragnitha/HelpDesk-API/actions/workflows/ci.yml/badge.svg)](https://github.com/pasupunuri-pragnitha/HelpDesk-API/actions/workflows/ci.yml)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
@@ -8,6 +8,24 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 ![MySQL 8](https://img.shields.io/badge/mysql-8.0-4479A1.svg)
 ![Tests](https://img.shields.io/badge/tests-181%20collected-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+
+---
+
+## At a Glance
+
+| Metric / Dimension | Specification |
+| :--- | :--- |
+| **API Endpoints** | 29 REST endpoints across 25 distinct routes (`/api/v1`) |
+| **Test Suite** | 181 collected tests (177 passed, 4 skipped without MySQL / optional dependencies) |
+| **Code Coverage** | 96% statement coverage (`app`) |
+| **Database Migrations** | 8 Alembic schema migration versions |
+| **Database Tables** | 6 relational tables (`users`, `tickets`, `ticket_comments`, `ticket_status_history`, `holidays`, `ticket_embeddings`) |
+| **SQL Reports** | 9 raw SQL analytical reports (CTEs, `RANK()` window functions) |
+| **User Roles** | 3 distinct RBAC roles (`requester`, `agent`, `admin`) |
+| **Codebase Size** | 12,343 lines of Python across 89 files (`app`: 4,486, `dashboard`: 1,797, `tests`: 6,060) |
+| **CI Automation** | 2 GitHub Actions jobs (Pytest & Coverage, MySQL 8 Migrations & Integration) |
+| **License** | MIT License (2026 Pasupunuri Pragnitha) |
 
 ---
 
@@ -26,6 +44,7 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 - [Known Limitations](#known-limitations)
 - [Roadmap](#roadmap)
 - [Project Structure](#project-structure)
+- [License](#license)
 - [Author](#author)
 
 ---
@@ -43,6 +62,7 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 | **Comments & History** | Public comments and staff-only `is_internal` notes. Full status change audit history recorded on state changes. |
 | **Search & Pagination** | Sanitized keyword search (`q`), multi-criteria filtering, multi-field sorting, and offset pagination. |
 | **SQL Reports** | 9 raw SQL reports using aggregations, `LEFT JOIN`, Common Table Expressions (CTEs), and `RANK()` window functions. |
+| **Streamlit Dashboard** | Complete management portal covering tickets list, new ticket AI triage, ticket details with audit trail, holiday calendar management, and KPI analytics. |
 
 ---
 
@@ -57,7 +77,7 @@ flowchart TD
     Services --> AI["AI Layer (HashingVectorizer / SBERT Embeddings)"]
     Services --> Models["SQLAlchemy 2.x Models"]
     Models --> DB[("MySQL 8 Database")]
-    Alembic["Alembic Migrations"] -.->|"Schema DDL"| DB
+    Alembic["Alembic Migrations (8 Versions)"] -.->|"Schema DDL"| DB
     CI["GitHub Actions CI"] -.->|"Automated Tests & Migration Check"| Routes
 ```
 
@@ -84,6 +104,8 @@ Any invalid or out-of-order state transition is rejected with an HTTP 409 Confli
 ---
 
 ## Database Schema
+
+The database consists of 6 tables managed via Alembic migrations.
 
 ```mermaid
 erDiagram
@@ -197,7 +219,7 @@ The AI layer provides automated, advisory category and priority suggestions as w
 
 ### Optional Dense Embedder (Sentence-Transformers)
 
-The default `hashing` backend requires zero downloads or external model weights. To enable dense semantic embeddings using `all-MiniLM-L6-v2`:
+The default `hashing-v2` backend requires zero downloads or external model weights. To enable dense semantic embeddings using `all-MiniLM-L6-v2`:
 
 ```powershell
 pip install -r requirements-ai.txt
@@ -221,6 +243,7 @@ python -m app.scripts.eval_triage --tune
 > The evaluation dataset `data/triage_eval.csv` is strictly synthetic benchmark demo data. The test split is never used for parameter tuning.
 
 #### 5-Fold Cross-Validation on Train Split Only ($N=96$)
+
 Threshold tuning for `AI_MIN_SIMILARITY` was conducted via 5-fold stratified cross-validation exclusively on the 96 training tickets:
 
 | `min_sim` | Coverage | Acc (when made) | Overall Acc (inc No Sugg) | Priority Overall |
@@ -256,6 +279,7 @@ Threshold tuning for `AI_MIN_SIMILARITY` was conducted via 5-fold stratified cro
 - `software`: **25.00%** (1/4)
 
 #### Interview Talking Point: How did you evaluate AI triage and what were the trade-offs?
+
 > *"Our initial baseline had an unacceptable 83% 'no suggestion' rate because an uncalibrated threshold (0.20) sat above the median cosine similarity of word-only sparse vectors, and common English stop words diluted signal. We redesigned the embedder (`hashing-v2`) to combine word 1-2 grams with stop words removed and sublinear TF scaling ($1 + \log(\text{tf})$) alongside character 3-5 n-grams for morphological resilience ('disconnects' vs 'disconnecting'), normalized to 4096 dimensions.*
 >
 > *We tuned `AI_MIN_SIMILARITY` honestly using 5-fold cross-validation strictly on the training set (never touching the test set), identifying 0.12 as the optimal operating point balancing 100% coverage and 60.6% training accuracy. On the held-out test split, overall category accuracy jumped from 16.67% (chance level) to 58.33% (14/24), ~3.5x higher than random chance (16.67%). Priority accuracy stands at 37.50%—priority is inherently more subjective across ticket creators.*
@@ -266,28 +290,28 @@ Threshold tuning for `AI_MIN_SIMILARITY` was conducted via 5-fold stratified cro
 
 ## API Overview
 
-All routes are prefixed with `/api/v1`. Interactive documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc).
+All routes are prefixed with `/api/v1`. Interactive documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc). The API exposes **29 endpoints** across **25 distinct routes**:
 
 | Method | Endpoint | Description | Access |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/v1/auth/register` | Register a new user account (defaults to requester role) | Public |
-| `POST` | `/api/v1/auth/login` | Authenticate with email and password, returning JWT | Public |
+| `POST` | `/api/v1/auth/login` | Authenticate with email and password, returning JWT access token | Public |
 | `GET` | `/api/v1/users/me` | Retrieve profile of the currently authenticated user | Authenticated |
 | `GET` | `/api/v1/users` | List registered users with pagination parameters | Admin |
 | `PATCH` | `/api/v1/users/{id}/role` | Update role of a specific user | Admin |
 | `POST` | `/api/v1/tickets` | Create a new support ticket (calculates business-hours SLA `due_at`) | Authenticated |
 | `GET` | `/api/v1/tickets` | List tickets with filters (status, priority, category, assignee, overdue), search, and pagination | Authenticated |
 | `GET` | `/api/v1/tickets/{id}` | Get ticket details (returns 404 if accessed by foreign requester) | Authenticated |
-| `GET` | `/api/v1/tickets/{id}/similar` | Retrieve tickets similar to a specific ticket, excluding itself (optional `?limit=`) | Agent / Admin |
 | `PATCH` | `/api/v1/tickets/{id}` | Update title, description, priority, or category | Owner (open) / Agent (category) / Admin |
 | `PATCH` | `/api/v1/tickets/{id}/status` | Transition status (pauses SLA clock on `waiting_on_requester`; pushes `due_at` on resume) | Agent / Admin |
 | `PATCH` | `/api/v1/tickets/{id}/assign` | Assign ticket to an agent (transitions open -> in_progress) | Agent / Admin |
-| `POST` | `/api/v1/tickets/{id}/comments` | Add comment (staff can set `is_internal=true`) | Owner / Agent / Admin |
 | `GET` | `/api/v1/tickets/{id}/comments` | List ticket comments (internal notes hidden from requesters) | Owner / Agent / Admin |
+| `POST` | `/api/v1/tickets/{id}/comments` | Add comment (staff can set `is_internal=true`) | Owner / Agent / Admin |
 | `GET` | `/api/v1/tickets/{id}/history` | Retrieve full status transition history audit trail | Owner / Agent / Admin |
+| `GET` | `/api/v1/tickets/{id}/similar` | Retrieve tickets similar to a specific ticket, excluding itself (optional `?limit=`) | Agent / Admin |
 | `POST` | `/api/v1/triage/suggest` | Advisory category/priority suggestions and duplicate detection | Authenticated |
-| `POST` | `/api/v1/holidays` | Register an organization holiday date (409 on duplicate date) | Admin |
 | `GET` | `/api/v1/holidays` | List registered organization holidays, ordered by date (optional `?year=`) | Agent / Admin |
+| `POST` | `/api/v1/holidays` | Register an organization holiday date (409 on duplicate date) | Admin |
 | `DELETE` | `/api/v1/holidays/{id}` | Remove an organization holiday by ID (404 if missing) | Admin |
 | `GET` | `/api/v1/reports/tickets-by-status` | Aggregated ticket counts grouped by status and priority | Agent / Admin |
 | `GET` | `/api/v1/reports/overdue` | List overdue tickets past SLA due date with requester and assignee (excludes paused) | Agent / Admin |
@@ -299,7 +323,6 @@ All routes are prefixed with `/api/v1`. Interactive documentation is available a
 | `GET` | `/api/v1/reports/agent-workload` | Agent workload summary: open work, overdue tickets, and resolved counts | Agent / Admin |
 | `GET` | `/api/v1/reports/tickets-by-category` | Ticket counts grouped by category, optionally broken down by status | Agent / Admin |
 | `GET` | `/api/v1/health` | Health check endpoint confirming API and database connectivity | Public |
-
 
 ---
 
@@ -328,6 +351,11 @@ pip install -r requirements.txt -r requirements-dev.txt
 pip install -r dashboard/requirements.txt
 ```
 
+> **Optional**: To enable the optional dense semantic embedding backend (`sbert` / `sentence-transformers`), also install:
+> ```powershell
+> pip install -r requirements-ai.txt
+> ```
+
 ### 4. Configure environment variables
 
 ```powershell
@@ -355,27 +383,38 @@ docker compose up -d db
 alembic upgrade head
 ```
 
-### 7. Create an initial administrator account
+### 7. Create an administrator account or populate demo data
+
+To create an administrator account:
 
 ```powershell
-python -m app.scripts.create_admin --email admin@example.com --password <your-password> --name "System Admin"
+python -m app.scripts.create_admin --email admin@example.com --password AdminPassword123! --name "System Admin"
+```
+
+Or populate realistic demo data across all workflows, reports, and AI triage embeddings:
+
+```powershell
+python -m app.scripts.seed_demo --yes
 ```
 
 ### 8. Run the FastAPI backend
 
+In Terminal 1:
+
 ```powershell
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 9. Run the Streamlit dashboard
 
-In a separate PowerShell terminal:
+In a separate PowerShell terminal (Terminal 2):
 
 ```powershell
-streamlit run dashboard/app.py
+.venv\Scripts\Activate.ps1
+python -m streamlit run dashboard/app.py
 ```
 
-For dashboard details, see [dashboard/README.md](dashboard/README.md).
+The dashboard will open automatically in your browser at `http://localhost:8501`. For detailed dashboard documentation, see [dashboard/README.md](dashboard/README.md).
 
 ---
 
@@ -401,7 +440,7 @@ python -m app.scripts.seed_demo
 | **Requester** | `requester@example.com` | `RequesterPassword123!` | Ravi Requester |
 
 > [!WARNING]
-> **Production Security Warning**: These demo accounts use well-known, public passwords. The seed script is strictly intended for local development, demonstration, and automated test environments. **Never run this script on or enable these accounts in a production deployment.**
+> **Local Development Security Warning**: These demo accounts and default passwords in `.env.example` and `docker-compose.yml` are strictly intended for local development, demonstration, and automated test environments. **Never deploy these default passwords in production.**
 
 ---
 
@@ -410,12 +449,13 @@ python -m app.scripts.seed_demo
 | Metric | Value |
 | :--- | :--- |
 | **Pytest Tests** | 181 collected (177 passed, 4 skipped without optional dependencies/MySQL URL) |
-| **Code Coverage** | 96% (`app`) |
-| **Database Migrations** | 8 Alembic migrations |
+| **Code Coverage** | 96% statement coverage (`app`) |
+| **Database Migrations** | 8 Alembic schema migration versions |
 | **User Roles** | 3 (`requester`, `agent`, `admin`) |
-| **SQL Reports** | 9 raw SQL reports |
+| **SQL Reports** | 9 raw SQL analytical reports |
 
 Run the test suite locally with coverage reporting:
+
 ```powershell
 pytest --cov=app --cov-report=term-missing --cov-fail-under=85
 ```
@@ -458,27 +498,37 @@ GitHub Actions CI runs the full test suite with coverage enforcement and execute
 
 ```text
 .
-├── alembic/              # Database migration configuration and version scripts
+├── alembic/              # Database migration configuration and version scripts (8 revisions)
 ├── app/                  # FastAPI backend application core, models, schemas, and routes
 │   ├── ai/               # AI embedder protocols, HashingVectorizer, and SBERT backends
-│   ├── api/              # API route definitions and dependency injection
+│   ├── api/              # API route definitions and dependency injection (29 endpoints)
 │   ├── core/             # Configuration, logging middleware, security, and SLA definitions
 │   ├── db/               # Database engine, session management, and Base declarative model
-│   ├── models/           # SQLAlchemy entity models and enums
+│   ├── models/           # SQLAlchemy entity models (6 tables) and enums (3 roles)
 │   ├── schemas/          # Pydantic models for validation and response serialization
 │   ├── scripts/          # Administrative CLI utilities (admin, demo seed, reindex, eval)
 │   └── services/         # Business logic layer (tickets workflow, reports, auth, triage)
 ├── dashboard/            # Streamlit web portal client and analytics views
+│   └── views/            # Screen views (login, tickets, new ticket, detail, holidays, reports)
 ├── data/                 # Benchmark evaluation dataset (synthetic helpdesk tickets)
 ├── docs/                 # Documentation assets
-├── tests/                # Automated pytest test suites and client mocks
+├── tests/                # Automated pytest test suites (181 collected tests)
+│   └── dashboard/        # Dashboard API client, formatting, and smoke tests
 ├── docker-compose.yml    # Multi-container orchestration for MySQL 8 and backend
 ├── Dockerfile            # Container build specification for FastAPI app
+├── LICENSE               # MIT License
 ├── pytest.ini            # Pytest configuration and coverage settings
 ├── requirements.txt      # Production runtime dependencies
 ├── requirements-ai.txt   # Optional semantic embedding dependencies (sentence-transformers)
-└── requirements-dev.txt  # Development and testing dependencies
+├── requirements-dev.txt  # Development and testing dependencies
+└── README.md             # Project documentation
 ```
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE) - see the [LICENSE](LICENSE) file for details.
 
 ---
 

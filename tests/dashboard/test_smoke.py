@@ -104,7 +104,26 @@ def test_new_ticket_possible_duplicates_navigation():
         "embedder": "hashing-v2",
     }
 
-    with mock.patch.object(HelpdeskAPIClient, "suggest_triage", return_value=mock_suggestion):
+    mock_detail = {
+        "id": 55,
+        "title": "Laptop screen flickering",
+        "description": "Dell XPS monitor flashes",
+        "status": "open",
+        "category": "hardware",
+        "priority": "medium",
+        "requester_id": 1,
+        "created_at": "2026-10-27T10:00:00Z",
+    }
+
+    with mock.patch.object(
+        HelpdeskAPIClient, "suggest_triage", return_value=mock_suggestion
+    ), mock.patch.object(
+        HelpdeskAPIClient, "get_ticket", return_value=mock_detail
+    ), mock.patch.object(
+        HelpdeskAPIClient, "get_comments", return_value=[]
+    ), mock.patch.object(
+        HelpdeskAPIClient, "get_history", return_value=[]
+    ):
         at = AppTest.from_file(str(DASHBOARD_APP_PATH), default_timeout=10)
         at.session_state["token"] = "fake-jwt-token"
         at.session_state["user"] = {"id": 1, "email": "requester@example.com", "role": "requester"}

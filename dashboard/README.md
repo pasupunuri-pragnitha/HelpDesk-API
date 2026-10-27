@@ -6,17 +6,17 @@ A modern, interactive management portal and analytics dashboard for the HelpDesk
 
 ## Features
 
-- **Authentication & Registration**: Clean tabbed login and registration interface storing tokens exclusively in memory (`st.session_state`).
-- **Ticket Management**:
+- **Authentication & Registration**: Clean tabbed login and registration interface storing JWT access tokens securely in memory (`st.session_state`).
+- **Ticket Management (`Tickets`)**:
   - Filter by Status, Priority, Category (`network`, `hardware`, `software`, `access`, `email`, `other`), keyword search (`q`), and Overdue status.
-  - Column headers displaying ID, Title, Category, Status, Priority, Assignee, and Due date.
-  - Full server-side pagination ("Page X of Y", "Showing a-b of N tickets") with automatic page-1 reset on filter adjustments.
+  - Column layout displaying ID, Title, Category, Status, Priority, Assignee, Due date, and a quick "View" action button.
+  - Full server-side pagination ("Page X of Y", "Showing a–b of N tickets") with automatic page-1 reset on filter adjustments.
   - Due dates highlighted in red with overdue indicators.
   - All timestamps automatically converted and formatted in the viewer's local timezone.
-  - Paused tickets clearly display "SLA paused" in purple and are never flagged as overdue.
-  - Requester isolation enforced by backend API.
-- **Ticket Detail & Collaboration**:
-  - Status (`WAITING ON REQUESTER` in purple), priority, and category badges; SLA due dates; requester and assignee metadata.
+  - Paused tickets clearly display "SLA paused" in purple and are never flagged as overdue while paused.
+  - Requester isolation enforced by backend API (requesters only see their own tickets).
+- **Ticket Detail & Collaboration (`Ticket Detail`)**:
+  - Status badges (including purple `WAITING ON REQUESTER`), priority, and category badges; SLA due dates; requester and assignee metadata.
   - Paused SLA banner alerting staff that the clock is frozen, with current due date caption.
   - Contextual status transition action buttons ("Pause SLA", "Resume work", "Resolve ticket", "Close ticket", "Reopen ticket", "Start work").
   - Category updates for ticket owners (while `open`) and staff (agents/admins anytime).
@@ -24,18 +24,18 @@ A modern, interactive management portal and analytics dashboard for the HelpDesk
   - Ticket lifecycle status transitions with conflict handling (409 validation).
   - Agent assignment dropdown (with manual agent ID input fallback).
   - Status audit history timeline with local timezone timestamps.
-- **AI Triage & Duplicate Detection in the Dashboard**:
-  - **Advisory Category & Priority Suggestions**: On the **New ticket** screen, users can click **🤖 Suggest category & priority** after entering a title or description. An AI suggestion card displays the recommended category badge, a confidence progress meter, and an expandable list of matching historical resolved tickets with similarity percentages.
+- **AI Triage & Duplicate Detection (`New ticket`)**:
+  - **Advisory Category & Priority Suggestions**: Users can click **🤖 Suggest category & priority** after typing a title or description. An AI suggestion card displays the recommended category badge, a confidence progress meter, and an expandable list of matching historical resolved tickets with similarity percentages.
   - **Advice Only**: Suggestions never mutate tickets automatically. Users choose whether to click **Apply category** or **Apply priority** to pre-fill form fields, and can override them at any time before clicking **Submit Ticket**.
   - **Priority-Hint Caveat**: Priority is presented as an advisory hint (*"Priority hint: {level} (low reliability, check it yourself)"*) because baseline priority estimation accuracy reflects dominant class distributions rather than strong predictive signal.
   - **Duplicate Detection**: Active tickets with high text similarity trigger a **⚠️ Possible duplicate** alert showing matched ticket ID, status, and similarity percent, with an **Open #id** direct link to view the ticket.
   - **Graceful Fallback**: If no confident match is found, an informational banner advises the user to select the category manually. API or network errors show a warning and never block ticket creation.
   - **Similar Tickets for Staff**: On the **Ticket Detail** page, agents and administrators have a **🔍 Similar Tickets** section ranked by text similarity to past tickets, allowing staff to quickly inspect and reuse verified fixes from resolved incidents. Requesters cannot see this section.
-- **Holidays Management** *(Agent and Admin only)*:
-  - Overview of official organizational holidays skipping the SLA clock.
+- **Holidays Management (`Holidays`)** *(Agent and Admin only)*:
+  - Overview of official organizational holidays skipping the business-hours SLA clock.
   - Year filter and computed day-of-week display.
   - Admin controls for registering new holidays with duplicate date conflict protection (409 error handling) and holiday deletion.
-- **Operational Analytics & KPI Reporting** *(Agent and Admin only)*:
+- **Operational Analytics & KPI Reporting (`Reports`)** *(Agent and Admin only)*:
   - Real-time KPI metric cards (Open, In Progress, Overdue, SLA Breach Rate %, and Average Resolution Hours).
   - Status distribution bar chart and Tickets by Category bar chart.
   - SLA breach rate by priority bar chart (comparing met vs breached tickets).
@@ -50,7 +50,7 @@ A modern, interactive management portal and analytics dashboard for the HelpDesk
 
 ## Prerequisites & Installation
 
-Ensure you have a Python 3.11+ environment activated.
+Ensure you have a Python 3.11+ virtual environment activated.
 
 Install dashboard dependencies:
 
@@ -64,9 +64,9 @@ pip install -r dashboard/requirements.txt
 
 The dashboard communicates with the backend API over HTTP. Configure the API endpoint using the environment variable:
 
-| Environment Variable | Description                       | Default                        |
-| -------------------- | --------------------------------- | ------------------------------ |
-| `HELPDESK_API_URL`   | Base URL of the Helpdesk REST API | `http://localhost:8000/api/v1` |
+| Environment Variable | Description | Default |
+| :--- | :--- | :--- |
+| `HELPDESK_API_URL` | Base URL of the Helpdesk REST API | `http://localhost:8000/api/v1` |
 
 ---
 
@@ -77,7 +77,7 @@ The dashboard communicates with the backend API over HTTP. Configure the API end
 From the project root in Windows PowerShell:
 
 ```powershell
-uvicorn app.main:app --reload --port 8000
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
 ### 2. Start the Streamlit Dashboard
@@ -85,7 +85,8 @@ uvicorn app.main:app --reload --port 8000
 In a separate Windows PowerShell terminal:
 
 ```powershell
-streamlit run dashboard/app.py
+.venv\Scripts\Activate.ps1
+python -m streamlit run dashboard/app.py
 ```
 
 The dashboard will open automatically in your browser at `http://localhost:8501`.
@@ -125,14 +126,6 @@ UPDATE users SET role = 'agent' WHERE email = 'agent@example.com';
 
 ---
 
-## Screenshots
+## License
 
-### Tickets Dashboard
-
-![Tickets List Screenshot](screenshots/tickets_list.png)
-*Tickets list showing search, filters, overdue warning indicators, and pagination controls.*
-
-### Reports & Analytics
-
-![Reports & Analytics Screenshot](screenshots/reports_analytics.png)
-*Analytics dashboard showing KPI metrics, status bar charts, agent ranking ties, and daily volume line chart.*
+This project is licensed under the [MIT License](../LICENSE).
