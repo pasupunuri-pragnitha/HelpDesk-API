@@ -302,6 +302,24 @@ class HelpdeskAPIClient:
         """Delete an organizational holiday by ID (Admin only)."""
         self._request("DELETE", f"/holidays/{holiday_id}")
 
+    # --- AI Triage & Similarity ---
+
+    def suggest_triage(self, title: str, description: str) -> dict[str, Any]:
+        """Request advisory AI category and priority suggestions and duplicate detection."""
+        return self._request(
+            "POST",
+            "/triage/suggest",
+            json={"title": title, "description": description},
+        )
+
+    def get_similar_tickets(self, ticket_id: int, limit: int = 5) -> list[dict[str, Any]]:
+        """Retrieve historical tickets similar to an existing ticket (Agent & Admin only)."""
+        return self._request(
+            "GET",
+            f"/tickets/{ticket_id}/similar",
+            params={"limit": limit},
+        )
+
 
 # Alias for convenience
 APIClient = HelpdeskAPIClient

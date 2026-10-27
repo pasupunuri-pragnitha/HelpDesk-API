@@ -6,8 +6,8 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg)
 ![MySQL 8](https://img.shields.io/badge/mysql-8.0-4479A1.svg)
-![Tests](https://img.shields.io/badge/tests-167%20collected-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-181%20collected-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-96%25-brightgreen)
 
 ---
 
@@ -39,7 +39,7 @@ Role-based IT helpdesk ticketing REST API with SLA tracking, SQL reports and a S
 | **Business-Hours SLA** | SLA calculated strictly within configurable working hours (`WORK_TIMEZONE`, `WORK_DAY_START`, `WORK_DAY_END`, `WORK_DAYS`) and organization holidays. |
 | **Pausable SLA Clock** | Moving to `waiting_on_requester` freezes the SLA clock (`sla_paused_at`); resuming to `in_progress` pushes `due_at` forward by exact elapsed business minutes. |
 | **Holidays Management** | Admin CRUD API for organizational holiday calendars (`/api/v1/holidays`), preventing SLA calculations on non-working dates. |
-| **AI Triage & Duplicates** | Advisory category/priority suggestions via similarity-weighted kNN voting; duplicate detection over active tickets using L2-normalized cosine embeddings. |
+| **AI Triage & Duplicates** | Advisory category/priority suggestions via similarity-weighted kNN voting; duplicate detection over active tickets using L2-normalized cosine embeddings; interactive Streamlit dashboard support with on-demand suggestions, duplicate alerts, and staff-only similar ticket discovery. |
 | **Comments & History** | Public comments and staff-only `is_internal` notes. Full status change audit history recorded on state changes. |
 | **Search & Pagination** | Sanitized keyword search (`q`), multi-criteria filtering, multi-field sorting, and offset pagination. |
 | **SQL Reports** | 9 raw SQL reports using aggregations, `LEFT JOIN`, Common Table Expressions (CTEs), and `RANK()` window functions. |
@@ -409,8 +409,8 @@ python -m app.scripts.seed_demo
 
 | Metric | Value |
 | :--- | :--- |
-| **Pytest Tests** | 167 collected (163 passed, 4 skipped without optional dependencies/MySQL URL) |
-| **Code Coverage** | 95% (`app`) |
+| **Pytest Tests** | 181 collected (177 passed, 4 skipped without optional dependencies/MySQL URL) |
+| **Code Coverage** | 96% (`app`) |
 | **Database Migrations** | 8 Alembic migrations |
 | **User Roles** | 3 (`requester`, `agent`, `admin`) |
 | **SQL Reports** | 9 raw SQL reports |

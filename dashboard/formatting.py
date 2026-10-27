@@ -172,3 +172,49 @@ def format_day_of_week(val: Any) -> str:
         return val.strftime("%A")
     return "-"
 
+
+def format_similarity(value: Any) -> str:
+    """
+    Format cosine similarity float (0.0 to 1.0) into a clean percentage string (e.g. 0.87 -> '87%').
+    Safely handles None, invalid inputs, and clamps to [0, 100].
+    """
+    if value is None:
+        return "0%"
+    try:
+        val = float(value)
+        pct = int(round(val * 100))
+        pct = max(0, min(100, pct))
+        return f"{pct}%"
+    except (ValueError, TypeError):
+        return "0%"
+
+
+def format_confidence(value: Any) -> str:
+    """
+    Format confidence float (0.0 to 1.0) into a percentage string (e.g. 0.75 -> '75%').
+    Safely handles None, invalid inputs, and clamps to [0, 100].
+    """
+    return format_similarity(value)
+
+
+def format_similar_ticket_row(ticket_dict: dict[str, Any]) -> dict[str, Any]:
+    """
+    Transform a similar ticket dictionary into display row elements.
+    Includes formatted similarity percentage, status color, and clean labels.
+    """
+    if not isinstance(ticket_dict, dict):
+        return {}
+
+    status_val = str(ticket_dict.get("status", "open")).lower()
+    return {
+        "id": ticket_dict.get("id"),
+        "title": str(ticket_dict.get("title", "")),
+        "status": status_val,
+        "status_label": status_val.replace("_", " ").upper(),
+        "status_color": get_status_color(status_val),
+        "category": str(ticket_dict.get("category", "other")).lower(),
+        "priority": str(ticket_dict.get("priority", "medium")).lower(),
+        "similarity": float(ticket_dict.get("similarity", 0.0) or 0.0),
+        "similarity_pct": format_similarity(ticket_dict.get("similarity")),
+    }
+

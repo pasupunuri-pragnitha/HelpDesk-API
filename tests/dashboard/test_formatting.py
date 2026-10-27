@@ -183,3 +183,46 @@ def test_format_day_of_week():
     assert format_day_of_week(12345) == "-"
 
 
+def test_format_similarity_and_confidence():
+    """Test format_similarity and format_confidence for various values."""
+    from dashboard.formatting import format_confidence, format_similarity
+
+    assert format_similarity(0.8732) == "87%"
+    assert format_similarity(0.87) == "87%"
+    assert format_similarity(1.0) == "100%"
+    assert format_similarity(0.0) == "0%"
+    assert format_similarity(None) == "0%"
+    assert format_similarity("not-a-number") == "0%"
+    assert format_similarity(-0.5) == "0%"
+    assert format_similarity(1.5) == "100%"
+
+    assert format_confidence(0.75) == "75%"
+    assert format_confidence(None) == "0%"
+
+
+def test_format_similar_ticket_row():
+    """Test format_similar_ticket_row transforms API ticket dict into display elements."""
+    from dashboard.formatting import format_similar_ticket_row, get_status_color
+
+    ticket_data = {
+        "id": 42,
+        "title": "VPN gateway timeout error",
+        "status": "in_progress",
+        "category": "network",
+        "priority": "high",
+        "similarity": 0.884,
+    }
+    row = format_similar_ticket_row(ticket_data)
+    assert row["id"] == 42
+    assert row["title"] == "VPN gateway timeout error"
+    assert row["status"] == "in_progress"
+    assert row["status_label"] == "IN PROGRESS"
+    assert row["status_color"] == get_status_color("in_progress")
+    assert row["category"] == "network"
+    assert row["priority"] == "high"
+    assert row["similarity_pct"] == "88%"
+
+    # Non-dict input
+    assert format_similar_ticket_row(None) == {}
+
+

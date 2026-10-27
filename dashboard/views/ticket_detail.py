@@ -9,6 +9,7 @@ from dashboard.api_client import (
 )
 from dashboard.formatting import (
     format_datetime,
+    format_similar_ticket_row,
     format_user_display,
     get_status_color,
     get_transition_button_label,
@@ -111,6 +112,37 @@ def render_ticket_detail(client: HelpdeskAPIClient) -> None:
         assignee_txt = format_user_display(ticket.get("assignee_name"), ticket.get("assignee_id"), fallback_unassigned="-")
         m_col2.caption(f"Assignee: {assignee_txt}")
         m_col3.caption(f"Created: {format_datetime(ticket.get('created_at'))}")
+
+    # Similar Tickets section (Agent and Admin only)
+    if user_role in ("agent", "admin"):
+        with st.expander("🔍 Similar Tickets", expanded=True):
+            st.caption("Ranked by text similarity. Open a resolved match to reuse its fix.")
+            try:
+                similar_tickets = client.get_similar_tickets(ticket_id, limit=5)
+                if not similar_tickets:
+                    st.caption("No similar tickets found.")
+                else:
+                    for sim in similar_tickets:
+                        sim_row = format_similar_ticket_row(sim)
+                        s_col1, s_col2 = st.columns([8, 2])
+                        with s_col1:
+                            st.markdown(
+                                f"- **#{sim_row['id']}** {sim_row['title']} · "
+                                f"<span style='background-color: {sim_row['status_color']}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold;'>{sim_row['status_label']}</span> · "
+                                f"`{sim_row['category'].capitalize()}` · "
+                                f"**{sim_row['similarity_pct']} match**",
+                                unsafe_allow_html=True,
+                            )
+                        with s_col2:
+                            if st.button("Open", key=f"btn_open_similar_{sim_row['id']}"):
+                                st.session_state.selected_ticket_id = sim_row["id"]
+                                st.rerun()
+            except SessionExpiredError:
+                st.session_state.clear()
+                st.session_state.session_expired_message = "Session expired, please log in again"
+                st.rerun()
+            except (APIError, APIConnectionError, Exception) as exc:
+                st.caption(f"Could not load similar tickets: {exc}")
 
     # Main content layout: Left = Comments & History, Right = Actions (if authorized)
     if can_manage_actions:

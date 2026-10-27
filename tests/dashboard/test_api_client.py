@@ -371,3 +371,98 @@ def test_holiday_session_expired_and_connection_error(api_client: HelpdeskAPICli
             api_client.create_holiday("2026-05-01", "May Day")
 
 
+def test_suggest_triage_api_client(api_client: HelpdeskAPIClient):
+    """Test suggest_triage method with success response, auth header, and error handling."""
+    api_client.set_token("token_requester")
+
+    # 1. Success
+    mock_resp = mock.MagicMock(spec=requests.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "suggested_category": "network",
+        "suggested_priority": "high",
+        "confidence": 0.85,
+        "evidence": [{"id": 1, "title": "VPN issue", "category": "network", "priority": "high", "similarity": 0.88}],
+        "possible_duplicates": [],
+        "embedder": "hashing-v2",
+    }
+
+    with mock.patch("requests.request", return_value=mock_resp) as mock_req:
+        res = api_client.suggest_triage("VPN drops", "Error 54")
+        assert res["suggested_category"] == "network"
+        assert res["confidence"] == 0.85
+        assert len(res["evidence"]) == 1
+        assert mock_req.call_args[1]["url"].endswith("/triage/suggest")
+        assert mock_req.call_args[1]["json"] == {"title": "VPN drops", "description": "Error 54"}
+        assert mock_req.call_args[1]["headers"]["Authorization"] == "Bearer token_requester"
+
+    # 2. 401 Session expired
+    mock_401 = mock.MagicMock(spec=requests.Response)
+    mock_401.status_code = 401
+    with mock.patch("requests.request", return_value=mock_401):
+        with pytest.raises(SessionExpiredError):
+            api_client.suggest_triage("VPN drops", "Error 54")
+
+    # 3. Connection error
+    with mock.patch("requests.request", side_effect=requests.exceptions.ConnectionError("Down")):
+        with pytest.raises(APIConnectionError):
+            api_client.suggest_triage("VPN drops", "Error 54")
+
+
+def test_get_similar_tickets_api_client(api_client: HelpdeskAPIClient):
+    """Test get_similar_tickets with success, empty, 403, 404, and connection errors."""
+    api_client.set_token("token_agent")
+
+    # 1. Success
+    mock_resp = mock.MagicMock(spec=requests.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = [
+        {
+            "id": 2,
+            "title": "Switch down",
+            "status": "resolved",
+            "category": "network",
+            "priority": "urgent",
+            "similarity": 0.91,
+        }
+    ]
+
+    with mock.patch("requests.request", return_value=mock_resp) as mock_req:
+        res = api_client.get_similar_tickets(10, limit=5)
+        assert len(res) == 1
+        assert res[0]["id"] == 2
+        assert mock_req.call_args[1]["url"].endswith("/tickets/10/similar")
+        assert mock_req.call_args[1]["params"] == {"limit": 5}
+        assert mock_req.call_args[1]["headers"]["Authorization"] == "Bearer token_agent"
+
+    # 2. Empty list
+    mock_empty = mock.MagicMock(spec=requests.Response)
+    mock_empty.status_code = 200
+    mock_empty.json.return_value = []
+    with mock.patch("requests.request", return_value=mock_empty):
+        assert api_client.get_similar_tickets(10) == []
+
+    # 3. 403 Forbidden
+    mock_403 = mock.MagicMock(spec=requests.Response)
+    mock_403.status_code = 403
+    mock_403.json.return_value = {"error": {"message": "Only agents and admins can access similar tickets"}}
+    with mock.patch("requests.request", return_value=mock_403):
+        with pytest.raises(APIError) as exc_info:
+            api_client.get_similar_tickets(10)
+        assert exc_info.value.status_code == 403
+
+    # 4. 404 Not Found
+    mock_404 = mock.MagicMock(spec=requests.Response)
+    mock_404.status_code = 404
+    mock_404.json.return_value = {"error": {"message": "Ticket not found"}}
+    with mock.patch("requests.request", return_value=mock_404):
+        with pytest.raises(APIError) as exc_info:
+            api_client.get_similar_tickets(999)
+        assert exc_info.value.status_code == 404
+
+    # 5. Connection error
+    with mock.patch("requests.request", side_effect=requests.exceptions.ConnectionError("Down")):
+        with pytest.raises(APIConnectionError):
+            api_client.get_similar_tickets(10)
+
+

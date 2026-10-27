@@ -24,6 +24,13 @@ A modern, interactive management portal and analytics dashboard for the HelpDesk
   - Ticket lifecycle status transitions with conflict handling (409 validation).
   - Agent assignment dropdown (with manual agent ID input fallback).
   - Status audit history timeline with local timezone timestamps.
+- **AI Triage & Duplicate Detection in the Dashboard**:
+  - **Advisory Category & Priority Suggestions**: On the **New ticket** screen, users can click **🤖 Suggest category & priority** after entering a title or description. An AI suggestion card displays the recommended category badge, a confidence progress meter, and an expandable list of matching historical resolved tickets with similarity percentages.
+  - **Advice Only**: Suggestions never mutate tickets automatically. Users choose whether to click **Apply category** or **Apply priority** to pre-fill form fields, and can override them at any time before clicking **Submit Ticket**.
+  - **Priority-Hint Caveat**: Priority is presented as an advisory hint (*"Priority hint: {level} (low reliability, check it yourself)"*) because baseline priority estimation accuracy reflects dominant class distributions rather than strong predictive signal.
+  - **Duplicate Detection**: Active tickets with high text similarity trigger a **⚠️ Possible duplicate** alert showing matched ticket ID, status, and similarity percent, with an **Open #id** direct link to view the ticket.
+  - **Graceful Fallback**: If no confident match is found, an informational banner advises the user to select the category manually. API or network errors show a warning and never block ticket creation.
+  - **Similar Tickets for Staff**: On the **Ticket Detail** page, agents and administrators have a **🔍 Similar Tickets** section ranked by text similarity to past tickets, allowing staff to quickly inspect and reuse verified fixes from resolved incidents. Requesters cannot see this section.
 - **Holidays Management** *(Agent and Admin only)*:
   - Overview of official organizational holidays skipping the SLA clock.
   - Year filter and computed day-of-week display.
