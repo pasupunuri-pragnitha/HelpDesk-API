@@ -38,7 +38,6 @@ Role-based IT helpdesk ticketing REST API with business-hours SLA tracking, raw 
 - [Testing & Quality](#testing--quality)
 - [Design Decisions](#design-decisions)
 - [Known Limitations](#known-limitations)
-- [Roadmap](#roadmap)
 - [Project Structure](#project-structure)
 - [License](#license)
 - [Author](#author)
@@ -378,14 +377,6 @@ GitHub Actions CI runs the full test suite with coverage enforcement and execute
 - **Offset Pagination**: Pagination uses standard SQL `LIMIT` / `OFFSET`, which is straightforward for moderate datasets but less performant on massive tables than keyset pagination.
 - **User Roster Access**: Only admins can list users; agents must input target agent IDs manually when assigning tickets.
 - **No Email Notifications**: Ticket lifecycle events and comments are tracked in database history rather than sending outbound email alerts.
-
----
-
-## Roadmap
-
-- [ ] Keyset/cursor-based pagination for high-volume ticket archives
-- [ ] Email notifications via SMTP/SendGrid on status and comment events
-- [ ] File and image attachment uploads for tickets and comments
 
 ---
 
